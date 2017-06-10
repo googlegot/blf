@@ -109,7 +109,8 @@
 // Use 20,0 for a single-channel driver or 0,20 for a two-channel driver
 #define BLINK_BRIGHTNESS    0,20
 
-
+// WARNING: You can only have a maximum of 16 modes TOTAL
+// That means NUM_MODES1 + NUM_MODES2 + NUM_HIDDEN MUST be <= 16
 // Mode group 1
 #define NUM_MODES1          7
 // PWM levels for the big circuit (FET or Nx7135)
@@ -127,22 +128,20 @@
 #define MODES1x2            20,230,255,0
 #define MODES_PWM2          PHASE,FAST,FAST,PHASE
 
-// Hidden modes are *before* the lowest (moon) mode, and should be specified
-// in reverse order.  So, to go backward from moon to turbo to strobe to
-// battcheck, use BATTCHECK,STROBE,TURBO .
-#define NUM_HIDDEN          3
-#define HIDDENMODES         STROBE,BATTCHECK,TURBO
-#define HIDDENMODES_PWM     PHASE,PHASE,PHASE
-#define HIDDENMODES_ALT     0,0,0   // Zeroes, same length as NUM_HIDDEN
+// Hidden modes are *before* the lowest (moon) mode
+#define NUM_HIDDEN          4
+#define HIDDENMODES         TURBO,STROBE,BATTCHECK,BIKING_STROBE
+#define HIDDENMODES_PWM     PHASE,PHASE,PHASE,PHASE
+#define HIDDENMODES_ALT     0,0,0,0   // Zeroes, same length as NUM_HIDDEN
 
 #define TURBO     255       // Convenience code for turbo mode
 #define BATTCHECK 254       // Convenience code for battery check mode
 // Uncomment to enable tactical strobe mode
 #define STROBE    253       // Convenience code for strobe mode
 // Uncomment to unable a 2-level stutter beacon instead of a tactical strobe
-//#define BIKING_STROBE 252   // Convenience code for biking strobe mode
+#define BIKING_STROBE 252   // Convenience code for biking strobe mode
 // comment out to use minimal version instead (smaller)
-//#define FULL_BIKING_STROBE
+#define FULL_BIKING_STROBE
 
 #define NON_WDT_TURBO            // enable turbo step-down without WDT
 // How many timer ticks before before dropping down.
@@ -221,6 +220,11 @@ void _delay_s()  // because it saves a bit of ROM space to do it this way
  * global variables
  */
 
+// total length of mode group's array
+uint8_t mode_cnt=NUM_HIDDEN + NUM_MODES1 + NUM_MODES2;
+uint8_t solid_low;
+uint8_t solid_high;
+
 // Config / state variables
 
 // Config bitfield
@@ -230,33 +234,21 @@ void _delay_s()  // because it saves a bit of ROM space to do it this way
 // med_press   = 8
 uint8_t config = 8;
 uint8_t eepos = 0;
-uint8_t mode_idx = 0;      // current or last-used mode number
+uint8_t mode_idx = NUM_HIDDEN;
 // counter for entering config mode
 // (needs to be remembered while off, but only for up to half a second)
 uint8_t fast_presses __attribute__ ((section (".noinit")));
 
-// total length of current mode group's array
-uint8_t mode_cnt;
-// number of regular non-hidden modes in current mode group
-uint8_t solid_modes;
-// number of hidden modes in the current mode group
-// (hardcoded because both groups have the same hidden modes)
-//uint8_t hidden_modes = NUM_HIDDEN;  // this is never used
-
 
 // Modes (gets set when the light starts up based on saved config values)
-PROGMEM const uint8_t modesNx1[] = { MODESNx1, HIDDENMODES };
-PROGMEM const uint8_t modesNx2[] = { MODESNx2, HIDDENMODES };
-const uint8_t *modesNx;  // gets pointed at whatever group is current
+const uint8_t modesNx[] = { HIDDENMODES, MODESNx1, MODESNx2 };
 
-PROGMEM const uint8_t modes1x1[] = { MODES1x1, HIDDENMODES_ALT };
-PROGMEM const uint8_t modes1x2[] = { MODES1x2, HIDDENMODES_ALT };
-const uint8_t *modes1x;
+const uint8_t modes1x[] = { HIDDENMODES_ALT, MODES1x1, MODES1x2 };
 
-PROGMEM const uint8_t modes_pwm1[] = { MODES_PWM1, HIDDENMODES_PWM };
-PROGMEM const uint8_t modes_pwm2[] = { MODES_PWM2, HIDDENMODES_PWM };
-const uint8_t *modes_pwm;
+const uint8_t modes_pwm[] = { HIDDENMODES_PWM, MODES_PWM1, MODES_PWM2 };
 
+// Gotta save some space so fast_presses 
+// doesn't get overwritten in SRAM
 PROGMEM const uint8_t voltage_blinks[] = {
     ADC_0,    // 1 blink  for 0%-25%
     ADC_25,   // 2 blinks for 25%-50%
@@ -299,68 +291,48 @@ void restore_state() {
 
 inline void next(){
     mode_idx ++;
-    if (mode_idx > solid_modes){
-        mode_idx = 0;
+    if (mode_idx > solid_high || mode_idx < solid_low){
+        mode_idx = solid_low;
     }
 }
 
 inline void prev(){
     mode_idx --;
-    if (mode_idx > solid_modes){
-        mode_idx = solid_modes;
+    if (mode_idx > solid_high || mode_idx < solid_low) {
+        mode_idx = solid_high;
     }
 }
 
 inline void med(){
     if ((config & 4) == 0) {
-        if (mode_idx == solid_modes) {
+        if (mode_idx == (NUM_HIDDEN - 1)) {
             // If we hit the end of the hidden modes, go back to moon
-            mode_idx = 0;
-	} else if (mode_idx > 0){
-            // Regular mode: is between 1 and mode_cnt
+            mode_idx = solid_low;
+	} else if (mode_idx <= solid_high && mode_idx > solid_low){
+            // regular mode: under solid_high, above solid_low
             mode_idx --;
+        } else if (mode_idx < (NUM_HIDDEN - 1)) {
+            mode_idx ++;
         } else {
-            // Otherwise, wrap around (this allows entering hidden modes)
-            mode_idx = mode_cnt;
+            // Otherwise, jump to hidden modes 
+            mode_idx = 0;
         }
     } else {
 	// reverse biased version of the same thing
-        // This wraps to moon before going to hidden modes because turbo
-        // would go to hidden turbo and that don't make no sense.
-	if (mode_idx > solid_modes) {
-            mode_idx --;
-        } else if (mode_idx < solid_modes && mode_idx != 0) {
+	// This skips hidden turbo, since going turbo->turbo
+        // just don't make no sense.
+        if (mode_idx == (NUM_HIDDEN - 1)) {
+            mode_idx = solid_high;
+        } else if (mode_idx < solid_high && mode_idx > solid_low) {
             mode_idx ++;
-        } else if (mode_idx == solid_modes){
-            mode_idx = 0;
+        } else if (mode_idx < (NUM_HIDDEN - 1)) {
+           mode_idx ++;
         } else {
-            mode_idx = mode_cnt;
+            mode_idx = 1;
         }
     }
 }
 
-void count_modes() {
-    /*
-     * Determine how many solid and hidden modes we have.
-     * The modes_pwm array should have several values for regular modes
-     * then some values for hidden modes.
-     *
-     * (this matters because we have more than one set of modes to choose
-     *  from, so we need to count at runtime)
-     */
-    if ((config & 1) == 0) {
-        solid_modes = NUM_MODES1 - 1;
-        modesNx = modesNx1;
-        modes1x = modes1x1;
-        modes_pwm = modes_pwm1;
-    } else {
-        solid_modes = NUM_MODES2 - 1;
-        modesNx = modesNx2;
-        modes1x = modes1x2;
-        modes_pwm = modes_pwm2;
-    }
-    mode_cnt = solid_modes + NUM_HIDDEN;
-}
 
 #ifdef VOLTAGE_MON
 inline void ADC_on() {
@@ -406,13 +378,13 @@ void debug_byte(uint8_t byte) {
 #endif
 
 void set_mode(uint8_t mode) {
-    TCCR0A = pgm_read_byte(modes_pwm + mode);
-    set_output(pgm_read_byte(modesNx + mode), pgm_read_byte(modes1x + mode));
+    TCCR0A = modes_pwm[mode];
+    set_output(modesNx[mode], modes1x[mode]);
     /*
     // Only set output for solid modes
-    uint8_t out = pgm_read_byte(modesNx + mode);
+    uint8_t out = modesNx[mode];
     if ((out < 250) || (out == 255)) {
-        set_output(pgm_read_byte(modesNx + mode), pgm_read_byte(modes1x + mode));
+        set_output(modesNx[mode], modes1x[mode]);
     }
     */
 }
@@ -489,7 +461,22 @@ int main(void)
     // Read config values and saved state
     restore_state();
     // Enable the current mode group
-    count_modes();
+
+    /*
+     * Determine how many solid and hidden modes we have, and where the 
+     * boundries for each mode group are.
+     *
+     * This is needed for mode group selection.
+     *
+     */
+
+    if ((config & 1) == 0) {
+        solid_low = mode_cnt - NUM_MODES1 - NUM_MODES2;
+        solid_high = mode_cnt - NUM_MODES2 - 1; 
+    } else {
+        solid_low = mode_cnt - NUM_MODES2;
+        solid_high = mode_cnt - 1;
+    }
 
 
     // memory decayed, reset it
@@ -521,9 +508,9 @@ int main(void)
         if ((config & 2) == 0) {
             // Reset to the first mode
             if ((config & 4) == 0 ){
-                mode_idx = 0;
+                mode_idx = solid_low;
             } else {
-                mode_idx = solid_modes;
+                mode_idx = solid_high;
             }
         }
     }
@@ -565,11 +552,11 @@ int main(void)
     ADCSRA |= (1 << ADSC);
 #endif
     while(1) {
-        output = pgm_read_byte(modesNx + mode_idx);
+        output = modesNx[mode_idx];
         if (fast_presses > 0x0f) {  // Config mode
             _delay_s();       // wait for user to stop fast-pressing button
             fast_presses = 0; // exit this mode after one use
-            mode_idx = 0;
+            mode_idx = solid_low;
 
             // Longer/larger version of the config mode
             // Toggle the mode group, blink, un-toggle, continue
@@ -635,7 +622,7 @@ int main(void)
             ticks ++;  // actually, we don't care about roll-over prevention
             if ((ticks > TURBO_TIMEOUT) 
                     && (output == TURBO)) {
-                mode_idx = solid_modes - 1; // step down to second-highest mode
+                mode_idx = solid_high - 1; // step down to second-highest mode
                 set_mode(mode_idx);
                 save_state();
             }
@@ -652,7 +639,7 @@ int main(void)
         if (ADCSRA & (1 << ADIF)) {  // if a voltage reading is ready
             voltage = ADCH; // get_voltage();
             // See if voltage is lower than what we were looking for
-            //if (voltage < ((mode_idx <= 1) ? ADC_CRIT : ADC_LOW)) {
+            //if (voltage < ((mode_idx <= solid_low + 1) ? ADC_CRIT : ADC_LOW)) {
             if (voltage < ADC_LOW) {
                 lowbatt_cnt ++;
             } else {
@@ -664,7 +651,7 @@ int main(void)
                 //set_output(0,0);  _delay_ms(100);
                 i = mode_idx; // save space by not accessing mode_idx more than necessary
                 // properly track hidden vs normal modes
-                if (i > solid_modes) {
+                if (i > solid_high) {
                     // step down from blinky modes to medium
                     i = 2;
                 } else if (i > 0) {
