@@ -36,11 +36,6 @@
  *
  *      For more details on these settings, visit http://github.com/JCapSolutions/blf-firmware/wiki/PWM-Frequency
  *
- * STARS
- *      Star 2 = second PWM output channel
- *      Star 3 = mode memory if soldered, no memory by default
- *      Star 4 = Capacitor for off-time
- *
  * VOLTAGE
  *      Resistor values for voltage divider (reference BLF-VLD README for more info)
  *      Reference voltage can be anywhere from 1.0 to 1.2, so this cannot be all that accurate
@@ -105,10 +100,6 @@
 #define OFFTIM3             // Use short/med/long off-time presses
                             // instead of just short/long
 
-// output to use for blinks on battery check mode (primary PWM level, alt PWM level)
-// Use 20,0 for a single-channel driver or 0,20 for a two-channel driver
-#define BLINK_BRIGHTNESS    0,20
-
 // WARNING: You can only have a maximum of 16 modes TOTAL
 // That means NUM_MODES1 + NUM_MODES2 + NUM_HIDDEN MUST be <= 16
 // Mode group 1
@@ -125,7 +116,7 @@
 // Mode group 2
 #define NUM_MODES2          4
 #define MODESNx2            0,0,90,255
-#define MODES1x2            20,230,255,0
+#define MODES1x2            3,230,255,0
 #define MODES_PWM2          PHASE,FAST,FAST,PHASE
 
 // Hidden modes are *before* the lowest (moon) mode
@@ -201,8 +192,6 @@ void _delay_s()  // because it saves a bit of ROM space to do it this way
 #include <avr/sleep.h>
 //#include <avr/power.h>
 
-#define STAR2_PIN   PB0     // But note that there is no star 2.
-#define STAR3_PIN   PB4
 #define CAP_PIN     PB3
 #define CAP_CHANNEL 0x03    // MUX 03 corresponds with PB3 (Star 4)
 #define CAP_DIDR    ADC3D   // Digital input disable bit corresponding with PB3
@@ -400,29 +389,16 @@ uint8_t get_voltage() {
 }
 #endif
 
-void blink(uint8_t val)
+void blink(uint8_t val, uint8_t speed, uint8_t brightness)
 {
     for (; val>0; val--)
     {
-        set_output(BLINK_BRIGHTNESS);
-        _delay_ms(100);
+        set_output(brightness,0);
+        _delay_ms(speed);
         set_output(0,0);
-        _delay_ms(400);
+        _delay_ms(speed);
+        _delay_ms(speed);
     }
-}
-
-void toggle(uint8_t val) {
-    // Used for extended config mode
-    // Changes the value of a config option, waits for the user to "save"
-    // by turning the light off, then changes the value back in case they
-    // didn't save.  Can be used repeatedly on different options, allowing
-    // the user to change and save only one at a time.
-    config ^= val;
-    save_state();
-    blink(2);
-    config ^= val;
-    save_state();
-    _delay_s();
 }
 
 int main(void)
@@ -558,23 +534,39 @@ int main(void)
             fast_presses = 0; // exit this mode after one use
             mode_idx = solid_low;
 
-            // Longer/larger version of the config mode
-            // Toggle the mode group, blink, un-toggle, continue
-            toggle(1);
-            // Toggle memory, blink, untoggle, exit
-            toggle(2);
-            // Toggle mode direction, blink, untoggle, exit
-            toggle(4);
-            // Toggle medium tap, blink, untoggle, exit
-            toggle(8);
+            // Loop through each config option,
+            // toggle, blink the mode number,
+            // wait a second for user to confirm,
+            // toggle back.
+            //
+            // Config items:
+            //
+            // 1 = Mode Group
+            // 2 = Mode Memory
+            // 4 = Reverse Mode Order
+            // 8 = Medium Press Disable
+            //
+            // Each toggle's blink count will be
+            // linear, so 1 blink for Mode Group,
+            // 3 blinks for Reverse Mode Order,
+            // 4 blinks for Medium Press. 
+            uint8_t item=1;
+            uint8_t blinks=1;
+            for (; item<=8; item<<=1, blinks++) {
+                blink(blinks, 124, 30);
+                _delay_ms(50);
+                config ^= item;
+                save_state();
+                blink(48, 15, 20);
+                config ^= item;
+                save_state();
+                _delay_s();
+            }
         }
 #ifdef STROBE
         else if (output == STROBE) {
             // 10Hz tactical strobe
-            set_output(255,0);
-            _delay_ms(50);
-            set_output(0,0);
-            _delay_ms(50);
+            blink(255, 25, 255);
         }
 #endif // ifdef STROBE
 #ifdef BIKING_STROBE
@@ -583,12 +575,10 @@ int main(void)
 #ifdef FULL_BIKING_STROBE
             // normal version
             for(i=0;i<4;i++) {
-                set_output(255,0);
-                _delay_ms(5);
-                set_output(0,255);
-                _delay_ms(65);
+                blink(1, 15, 240);
             }
-            _delay_ms(720);
+            set_output(0,255);
+            _delay_s();
 #else
             // small/minimal version
             set_output(255,0);
@@ -608,7 +598,7 @@ int main(void)
 
             // blink zero to five times to show voltage
             // (~0%, ~25%, ~50%, ~75%, ~100%, >100%)
-            blink(i);
+            blink(i, 124, 30);
             // wait between readouts
             _delay_s(); _delay_s();
         }
