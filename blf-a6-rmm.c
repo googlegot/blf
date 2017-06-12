@@ -116,7 +116,7 @@
 // Mode group 2
 #define NUM_MODES2          4
 #define MODESNx2            0,0,90,255
-#define MODES1x2            3,230,255,0
+#define MODES1x2            3,110,255,0
 #define MODES_PWM2          PHASE,FAST,FAST,PHASE
 
 // Hidden modes are *before* the lowest (moon) mode
@@ -131,8 +131,6 @@
 #define STROBE    253       // Convenience code for strobe mode
 // Uncomment to unable a 2-level stutter beacon instead of a tactical strobe
 #define BIKING_STROBE 252   // Convenience code for biking strobe mode
-// comment out to use minimal version instead (smaller)
-#define FULL_BIKING_STROBE
 
 #define NON_WDT_TURBO            // enable turbo step-down without WDT
 // How many timer ticks before before dropping down.
@@ -572,17 +570,8 @@ int main(void)
 #ifdef BIKING_STROBE
         else if (output == BIKING_STROBE) {
             // 2-level stutter beacon for biking and such
-#ifdef FULL_BIKING_STROBE
             // normal version
-            for(i=0;i<4;i++) {
-                blink(1, 15, 240);
-            }
-            set_output(0,255);
-            _delay_s();
-#else
-            // small/minimal version
-            set_output(255,0);
-            _delay_ms(10);
+            blink(4, 15, 240);
             set_output(0,255);
             _delay_s();
 #endif
