@@ -574,7 +574,6 @@ int main(void)
             blink(4, 15, 240);
             set_output(0,255);
             _delay_s();
-#endif
         }
 #endif  // ifdef BIKING_STROBE
 #ifdef BATTCHECK
