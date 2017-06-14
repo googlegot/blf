@@ -87,7 +87,6 @@
 #define FAST 0xA3           // fast PWM both channels
 #define PHASE 0xA1          // phase-correct PWM both channels
 
-#define VOLTAGE_MON         // Comment out to disable LVP
 #define OWN_DELAY           // Should we use the built-in delay or our own?
 // Adjust the timing per-driver, since the hardware has high variance
 // Higher values will run slower, lower values run faster.
@@ -112,17 +111,17 @@
 // Krono sample:  6=5..21, 7=17..32, 8=33..96(50..78)
 // Manker2:       2=21, 3=39, 4=47, ... 6?=68
 // PWM speed for each mode
-#define MODES_PWM1          PHASE,FAST,FAST,FAST,FAST,FAST,PHASE
+//#define MODES_PWM1          PHASE,FAST,FAST,FAST,FAST,FAST,PHASE
 // Mode group 2
 #define NUM_MODES2          4
 #define MODESNx2            0,0,90,255
 #define MODES1x2            3,110,255,0
-#define MODES_PWM2          PHASE,FAST,FAST,PHASE
+//#define MODES_PWM2          PHASE,FAST,FAST,PHASE
 
 // Hidden modes are *before* the lowest (moon) mode
 #define NUM_HIDDEN          4
 #define HIDDENMODES         TURBO,STROBE,BATTCHECK,BIKING_STROBE
-#define HIDDENMODES_PWM     PHASE,PHASE,PHASE,PHASE
+//#define HIDDENMODES_PWM     PHASE,PHASE,PHASE,PHASE
 #define HIDDENMODES_ALT     0,0,0,0   // Zeroes, same length as NUM_HIDDEN
 
 #define TURBO     255       // Convenience code for turbo mode
@@ -132,7 +131,6 @@
 // Uncomment to unable a 2-level stutter beacon instead of a tactical strobe
 #define BIKING_STROBE 252   // Convenience code for biking strobe mode
 
-#define NON_WDT_TURBO            // enable turbo step-down without WDT
 // How many timer ticks before before dropping down.
 // Each timer tick is 1s, so "30" would be a 30-second stepdown.
 // Max value of 255 unless you change "ticks"
@@ -203,25 +201,31 @@ void _delay_s()  // because it saves a bit of ROM space to do it this way
 #define PWM_LVL     OCR0B   // OCR0B is the output compare register for PB1
 #define ALT_PWM_LVL OCR0A   // OCR0A is the output compare register for PB0
 
+#define MODE_CNT (NUM_HIDDEN + NUM_MODES1 + NUM_MODES2)
+#define HIDDEN_HIGH (NUM_HIDDEN - 1)
+#define HIDDEN_LOW 0
+#define SOLID_LOW1  (MODE_CNT - NUM_MODES1 - NUM_MODES2);
+#define SOLID_HIGH1 (MODE_CNT - NUM_MODES2 - 1); 
+#define SOLID_LOW2  (MODE_CNT - NUM_MODES2);
+#define SOLID_HIGH2 (MODE_CNT - 1);
+
+
 /*
  * global variables
  */
 
-// total length of mode group's array
-uint8_t mode_cnt=NUM_HIDDEN + NUM_MODES1 + NUM_MODES2;
 uint8_t solid_low;
 uint8_t solid_high;
 
 // Config / state variables
-
 // Config bitfield
 // mode group  = 1
 // memory      = 2
 // mode_dir    = 4
 // med_press   = 8
 uint8_t config = 8;
+
 uint8_t eepos = 0;
-uint8_t mode_idx = NUM_HIDDEN;
 // counter for entering config mode
 // (needs to be remembered while off, but only for up to half a second)
 uint8_t fast_presses __attribute__ ((section (".noinit")));
@@ -229,14 +233,9 @@ uint8_t fast_presses __attribute__ ((section (".noinit")));
 
 // Modes (gets set when the light starts up based on saved config values)
 const uint8_t modesNx[] = { HIDDENMODES, MODESNx1, MODESNx2 };
-
 const uint8_t modes1x[] = { HIDDENMODES_ALT, MODES1x1, MODES1x2 };
 
-const uint8_t modes_pwm[] = { HIDDENMODES_PWM, MODES_PWM1, MODES_PWM2 };
-
-// Gotta save some space so fast_presses 
-// doesn't get overwritten in SRAM
-PROGMEM const uint8_t voltage_blinks[] = {
+const uint8_t voltage_blinks[] = {
     ADC_0,    // 1 blink  for 0%-25%
     ADC_25,   // 2 blinks for 25%-50%
     ADC_50,   // 3 blinks for 50%-75%
@@ -245,7 +244,7 @@ PROGMEM const uint8_t voltage_blinks[] = {
     255,      // Ceiling, don't remove
 };
 
-void save_state() {  // central method for writing (with wear leveling)
+void save_state(uint8_t idx) {  // central method for writing (with wear leveling)
     // a single 16-bit write uses less ROM space than two 8-bit writes
     uint8_t eep;
     uint8_t oldpos=eepos;
@@ -254,94 +253,82 @@ void save_state() {  // central method for writing (with wear leveling)
     // Bitfield all the things!
     // This limits the max number of brightness settings to 15.  More will clobber config settings.
     // Layout is: IIIINMRP (mode (I)ndex, mode (N)umber, mode (M)emory, mode (R)everse, medium (P)ress) 
-    eep = config | (mode_idx << 4);
+    eep = ~(config | (idx << 4));
     // Flip it so if all config options are enabled and index is 15, we still find the config
-    eep = ~eep;
     eeprom_write_byte((uint8_t *)(eepos), eep);      // save current state
     eeprom_write_byte((uint8_t *)(oldpos), 0xff);    // erase old state
 }
 
-void restore_state() {
+inline uint8_t restore_state() {
     uint8_t eep;
     // find the config data
     for(eepos=0; eepos<EEPLEN; eepos++) {
-        eep = eeprom_read_byte((const uint8_t *)eepos);
-        if (eep != 0xff) break;
-    }
-    // unpack the config data
-    if (eepos < EEPLEN) {
-    	eep = ~eep;
-        config = (eep & ~0xF0);
-        mode_idx = (eep >> 4 );
-    }
+        eep = ~(eeprom_read_byte((const uint8_t *)eepos));
+        if (eep != 0x00) {
+            return eep;
+        }
+    } 
+    return 0;
 }
 
-inline void next(){
-    mode_idx ++;
-    if (mode_idx > solid_high || mode_idx < solid_low){
-        mode_idx = solid_low;
+inline uint8_t next(uint8_t i){
+    i ++;
+    if (i > solid_high || i < solid_low){
+        i = solid_low;
     }
+    return i;
 }
 
-inline void prev(){
-    mode_idx --;
-    if (mode_idx > solid_high || mode_idx < solid_low) {
-        mode_idx = solid_high;
+inline uint8_t prev(uint8_t i){
+    i --;
+    if (i > solid_high || i < solid_low) {
+        i = solid_high;
     }
+    return i;
 }
 
-inline void med(){
+inline uint8_t med(uint8_t i){
     if ((config & 4) == 0) {
-        if (mode_idx == (NUM_HIDDEN - 1)) {
+        if (i == (HIDDEN_HIGH)) {
             // If we hit the end of the hidden modes, go back to moon
-            mode_idx = solid_low;
-	} else if (mode_idx <= solid_high && mode_idx > solid_low){
+            i = solid_low;
+	} else if (i <= solid_high && i > solid_low){
             // regular mode: under solid_high, above solid_low
-            mode_idx --;
-        } else if (mode_idx < (NUM_HIDDEN - 1)) {
-            mode_idx ++;
+            i --;
+        } else if (i < (HIDDEN_HIGH)) {
+            i ++;
         } else {
             // Otherwise, jump to hidden modes 
-            mode_idx = 0;
+            i = HIDDEN_LOW;
         }
     } else {
 	// reverse biased version of the same thing
 	// This skips hidden turbo, since going turbo->turbo
-        // just don't make no sense.
-        if (mode_idx == (NUM_HIDDEN - 1)) {
-            mode_idx = solid_high;
-        } else if (mode_idx < solid_high && mode_idx > solid_low) {
-            mode_idx ++;
-        } else if (mode_idx < (NUM_HIDDEN - 1)) {
-           mode_idx ++;
+    // just don't make no sense.
+        if (i == (HIDDEN_HIGH)) {
+            i = solid_high;
+        } else if (i < solid_high && i > solid_low) {
+            i ++;
+        } else if (i < (HIDDEN_HIGH)) {
+           i ++;
         } else {
-            mode_idx = 1;
+            i = HIDDEN_LOW + 1;
         }
     }
+    return i;
 }
 
-
-#ifdef VOLTAGE_MON
 inline void ADC_on() {
     DIDR0 |= (1 << ADC_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-#if (ATTINY == 13)
+//#if (ATTINY == 13)
     ADMUX  = (1 << REFS0) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-#elif (ATTINY == 25)
-    ADMUX  = (1 << REFS1) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-#endif
+//#elif (ATTINY == 25)
+//    ADMUX  = (1 << REFS1) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
+//#endif
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
 }
-#else
-inline void ADC_off() {
-    ADCSRA &= ~(1<<7); //ADC off
-}
-#endif
 
-void set_output(uint8_t pwm1, uint8_t pwm2) {
-    // Need PHASE to properly turn off the light
-    if ((pwm1==0) && (pwm2==0)) {
-        TCCR0A = PHASE;
-    }
+inline void set_output(uint8_t pwm1, uint8_t pwm2) {
     PWM_LVL = pwm1;
     ALT_PWM_LVL = pwm2;
 }
@@ -364,31 +351,12 @@ void debug_byte(uint8_t byte) {
 }
 #endif
 
-void set_mode(uint8_t mode) {
-    TCCR0A = modes_pwm[mode];
-    set_output(modesNx[mode], modes1x[mode]);
-    /*
-    // Only set output for solid modes
-    uint8_t out = modesNx[mode];
-    if ((out < 250) || (out == 255)) {
-        set_output(modesNx[mode], modes1x[mode]);
-    }
-    */
+void set_mode(uint8_t idx) {
+    set_output(modesNx[idx], modes1x[idx]);
+    save_state(idx);
 }
 
-#ifdef VOLTAGE_MON
-uint8_t get_voltage() {
-    // Start conversion
-    ADCSRA |= (1 << ADSC);
-    // Wait for completion
-    while (ADCSRA & (1 << ADSC));
-    // See if voltage is lower than what we were looking for
-    return ADCH;
-}
-#endif
-
-void blink(uint8_t val, uint8_t speed, uint8_t brightness)
-{
+void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
     for (; val>0; val--)
     {
         set_output(brightness,0);
@@ -399,18 +367,17 @@ void blink(uint8_t val, uint8_t speed, uint8_t brightness)
     }
 }
 
-int main(void)
-{
+int main(void) {
+    uint8_t mode_idx=NUM_HIDDEN;
     uint8_t cap_val;
-
     // Read the off-time cap *first* to get the most accurate reading
     // Start up ADC for capacitor pin
     DIDR0 |= (1 << CAP_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-#if (ATTINY == 13)
+//#if (ATTINY == 13)
     ADMUX  = (1 << REFS0) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC3/PB3
-#elif (ATTINY == 25)
-    ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-#endif
+//#elif (ATTINY == 25)
+    //ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
+//#endif
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
 
     // Wait for completion
@@ -433,7 +400,13 @@ int main(void)
     TCCR0B = 0x01; // pre-scaler for timer (1 => 1, 2 => 8, 3 => 64...)
 
     // Read config values and saved state
-    restore_state();
+    uint8_t eep=restore_state();
+    // unpack the config data
+    if (eepos < EEPLEN) {
+        config = (eep & ~0xF0);
+        mode_idx = (eep >> 4 );
+    }
+
     // Enable the current mode group
 
     /*
@@ -445,36 +418,28 @@ int main(void)
      */
 
     if ((config & 1) == 0) {
-        solid_low = mode_cnt - NUM_MODES1 - NUM_MODES2;
-        solid_high = mode_cnt - NUM_MODES2 - 1; 
+        solid_low  = SOLID_LOW1; 
+        solid_high = SOLID_HIGH1;
     } else {
-        solid_low = mode_cnt - NUM_MODES2;
-        solid_high = mode_cnt - 1;
+        solid_low  = SOLID_LOW2;
+        solid_high = SOLID_HIGH2;
     }
-
-
-    // memory decayed, reset it
-    // (should happen on med/long press instead
-    //  because mem decay is *much* slower when the OTC is charged
-    //  so let's not wait until it decays to reset it)
-    //if (fast_presses > 0x20) { fast_presses = 0; }
     
     if (cap_val > CAP_SHORT) {
         // We don't care what the value is as long as it's over 15
         fast_presses = (fast_presses+1) & 0x1f;
         // Indicates they did a short press, go to the next mode
         if ((config & 4) == 0){ 
-            next(); // Will handle wrap arounds
+            mode_idx = next(mode_idx); // Will handle wrap arounds
         } else {
-            prev();
+            mode_idx = prev(mode_idx);
         }
 
-#ifdef OFFTIM3
     } else if (cap_val > CAP_MED && ((config & 8) != 0)) {
         fast_presses = 0;
         // User did a medium press, go back one mode
-        med();
-#endif
+        mode_idx = med(mode_idx);
+    
     } else {
         // Long press, keep the same mode
         // ... or reset to the first mode
@@ -488,12 +453,7 @@ int main(void)
             }
         }
     }
-#ifdef DEBUG
-	debug_byte(mode_idx);
-	_delay_ms(300);
-	debug_byte(config);
-#endif
-    save_state();
+    save_state(mode_idx);
 
     // Turn off ADC
     //ADC_off();
@@ -503,29 +463,23 @@ int main(void)
     PORTB |= (1 << CAP_PIN);    // High
 
     // Turn features on or off as needed
-    #ifdef VOLTAGE_MON
     ADC_on();
-    #else
-    ADC_off();
-    #endif
     //ACSR   |=  (1<<7); //AC off
 
     // Enable sleep mode set to Idle that will be triggered by the sleep_mode() command.
     // Will allow us to go idle between WDT interrupts
-    //set_sleep_mode(SLEEP_MODE_IDLE);  // not used due to blinky modes
-
-    uint8_t output;
-#ifdef NON_WDT_TURBO
+   // set_sleep_mode(SLEEP_MODE_IDLE);  // not used due to blinky modes
     uint8_t ticks = 0;
-#endif
-#ifdef VOLTAGE_MON
+    uint8_t output;
     uint8_t lowbatt_cnt = 0;
     uint8_t i = 0;
     uint8_t voltage;
-    // Make sure voltage reading is running for later
-    ADCSRA |= (1 << ADSC);
-#endif
     while(1) {
+        // Get the voltage for later 
+        ADCSRA |= (1 << ADSC);
+        // Wait for completion
+        while (ADCSRA & (1 << ADSC));
+        voltage = ADCH;
         output = modesNx[mode_idx];
         if (fast_presses > 0x0f) {  // Config mode
             _delay_s();       // wait for user to stop fast-pressing button
@@ -554,114 +508,71 @@ int main(void)
                 blink(blinks, 124, 30);
                 _delay_ms(50);
                 config ^= item;
-                save_state();
+                save_state(mode_idx);
                 blink(48, 15, 20);
                 config ^= item;
-                save_state();
+                save_state(mode_idx);
                 _delay_s();
             }
-        }
-#ifdef STROBE
-        else if (output == STROBE) {
+        } else if (output == STROBE || output == BIKING_STROBE) {
             // 10Hz tactical strobe
-            blink(255, 25, 255);
-        }
-#endif // ifdef STROBE
-#ifdef BIKING_STROBE
-        else if (output == BIKING_STROBE) {
-            // 2-level stutter beacon for biking and such
-            // normal version
-            blink(4, 15, 240);
-            set_output(0,255);
-            _delay_s();
-        }
-#endif  // ifdef BIKING_STROBE
-#ifdef BATTCHECK
-        else if (output == BATTCHECK) {
-            voltage = get_voltage();
+            blink(4, 25, 255);
+            if (output == BIKING_STROBE) {
+                // 2-level stutter beacon for biking and such
+                // normal version
+                set_output(0,255);
+                _delay_s();
+            }
+        } else if (output == BATTCHECK) {
             // figure out how many times to blink
-            for (i=0;
-                    voltage > pgm_read_byte(voltage_blinks + i);
-                    i ++) {}
-
+            for (i=0; voltage > voltage_blinks[i]; i ++) {}
             // blink zero to five times to show voltage
             // (~0%, ~25%, ~50%, ~75%, ~100%, >100%)
             blink(i, 124, 30);
             // wait between readouts
-            _delay_s(); _delay_s();
-        }
-#endif // ifdef BATTCHECK
-        else {  // Regular non-hidden solid mode
-            set_mode(mode_idx);
-            // This part of the code will mostly replace the WDT tick code.
-#ifdef NON_WDT_TURBO
+            _delay_s();
+        } else {  // Regular non-hidden solid mode
             // Do some magic here to handle turbo step-down
-            //if (ticks < 255) ticks++;  // don't roll over
-            ticks ++;  // actually, we don't care about roll-over prevention
-            if ((ticks > TURBO_TIMEOUT) 
-                    && (output == TURBO)) {
+            ticks ++;
+            if ((ticks > TURBO_TIMEOUT) && (mode_idx == solid_high)) {
                 mode_idx = solid_high - 1; // step down to second-highest mode
-                set_mode(mode_idx);
-                save_state();
             }
-#endif
+            set_mode(mode_idx);
             // Otherwise, just sleep.
             _delay_s();
-
-            // If we got this far, the user has stopped fast-pressing.
-            // So, don't enter config mode.
-            fast_presses = 0;
         }
-#ifdef VOLTAGE_MON
-#if 1
-        if (ADCSRA & (1 << ADIF)) {  // if a voltage reading is ready
-            voltage = ADCH; // get_voltage();
-            // See if voltage is lower than what we were looking for
-            //if (voltage < ((mode_idx <= solid_low + 1) ? ADC_CRIT : ADC_LOW)) {
-            if (voltage < ADC_LOW) {
-                lowbatt_cnt ++;
-            } else {
-                lowbatt_cnt = 0;
-            }
-            // See if it's been low for a while, and maybe step down
-            if (lowbatt_cnt >= 8) {
-                // DEBUG: blink on step-down:
-                //set_output(0,0);  _delay_ms(100);
-                i = mode_idx; // save space by not accessing mode_idx more than necessary
-                // properly track hidden vs normal modes
-                if (i > solid_high) {
-                    // step down from blinky modes to medium
-                    i = 2;
-                } else if (i > 0) {
-                    // step down from solid modes one at a time
-                    i --;
-                } else { // Already at the lowest mode
-                    i = 0;
-                    // Turn off the light
-                    set_output(0,0);
-                    // Power down as many components as possible
-                    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-                    sleep_mode();
-                }
-                set_mode(i);
-                mode_idx = i;
-                save_state();
-                lowbatt_cnt = 0;
-                // Wait at least 2 seconds before lowering the level again
-                _delay_ms(250);  // this will interrupt blinky modes
-            }
-
-            // Make sure conversion is running for next time through
-            ADCSRA |= (1 << ADSC);
+        
+        if (voltage < ADC_LOW) {
+            lowbatt_cnt ++;
+        } else {
+            lowbatt_cnt = 0;
         }
-#endif
-#endif  // ifdef VOLTAGE_MON
-        //sleep_mode();  // incompatible with blinky modes
-
+        // See if it's been low for a while, and maybe step down
+        if (lowbatt_cnt >= 8) {
+            i = mode_idx; // save space by not accessing mode_idx more than necessary
+            // properly track hidden vs normal modes
+            if (i < solid_low) {
+                // step down from blinky modes to medium
+                i = solid_high - 2;
+            } else if (mode_idx > solid_low) {
+                // step down from solid modes one at a time
+                i --;
+            } else { // Already at the lowest mode
+                i = solid_low;
+                // Turn off the light
+                set_output(0,0);
+                // Power down as many components as possible
+                set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+                sleep_mode();
+            }
+            mode_idx = i;
+            set_mode(mode_idx);
+            lowbatt_cnt = 0;
+            // Wait at least 2 seconds before lowering the level again
+            _delay_ms(250);  // this will interrupt blinky modes
+        }
         // If we got this far, the user has stopped fast-pressing.
         // So, don't enter config mode.
-        //fast_presses = 0;  // doesn't interact well with strobe, too fast
+        fast_presses = 0;
     }
-
-    //return 0; // Standard Return Code
 }
