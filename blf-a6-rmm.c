@@ -285,7 +285,7 @@ inline uint8_t med(uint8_t i, int8_t dir, uint8_t start){
        i = start;
    } else if (i <= solid_high && i > solid_low){
        // regular mode: under solid_high, above solid_low
-       i += dir;
+       i -= dir;
    } else if (i < (HIDDEN_HIGH)) {
        i ++;
    } else {
