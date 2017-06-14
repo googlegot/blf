@@ -1,2 +1,2 @@
 # blf
-Flashlight firmwares for the BLF A6,butchered by me.
+Flashlight firmwares for the BLF A6 and similar drivers.

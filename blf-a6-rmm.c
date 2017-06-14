@@ -271,51 +271,27 @@ inline uint8_t restore_state() {
     return 0;
 }
 
-inline uint8_t next(uint8_t i){
-    i ++;
+inline uint8_t next(uint8_t i, int8_t dir, uint8_t start){
+    i += dir;
     if (i > solid_high || i < solid_low){
-        i = solid_low;
+        i = start;
     }
     return i;
 }
 
-inline uint8_t prev(uint8_t i){
-    i --;
-    if (i > solid_high || i < solid_low) {
-        i = solid_high;
-    }
-    return i;
-}
-
-inline uint8_t med(uint8_t i){
-    if ((config & 4) == 0) {
-        if (i == (HIDDEN_HIGH)) {
-            // If we hit the end of the hidden modes, go back to moon
-            i = solid_low;
-	} else if (i <= solid_high && i > solid_low){
-            // regular mode: under solid_high, above solid_low
-            i --;
-        } else if (i < (HIDDEN_HIGH)) {
-            i ++;
-        } else {
-            // Otherwise, jump to hidden modes 
-            i = HIDDEN_LOW;
-        }
-    } else {
-	// reverse biased version of the same thing
-	// This skips hidden turbo, since going turbo->turbo
-    // just don't make no sense.
-        if (i == (HIDDEN_HIGH)) {
-            i = solid_high;
-        } else if (i < solid_high && i > solid_low) {
-            i ++;
-        } else if (i < (HIDDEN_HIGH)) {
-           i ++;
-        } else {
-            i = HIDDEN_LOW + 1;
-        }
-    }
-    return i;
+inline uint8_t med(uint8_t i, int8_t dir, uint8_t start){
+   if (i == (HIDDEN_HIGH)) {
+       // If we hit the end of the hidden modes, go back to start 
+       i = start;
+   } else if (i <= solid_high && i > solid_low){
+       // regular mode: under solid_high, above solid_low
+       i -= dir;
+   } else if (i < (HIDDEN_HIGH)) {
+       i ++;
+   } else {
+       // Otherwise, jump to hidden modes 
+       i = HIDDEN_LOW;
+   }
 }
 
 inline void ADC_on() {
@@ -362,14 +338,14 @@ void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
         set_output(brightness,0);
         _delay_ms(speed);
         set_output(0,0);
-        _delay_ms(speed);
-        _delay_ms(speed);
+        _delay_ms(speed); _delay_ms(speed);
     }
 }
 
 int main(void) {
     uint8_t mode_idx=NUM_HIDDEN;
     uint8_t cap_val;
+    uint8_t i=2;
     // Read the off-time cap *first* to get the most accurate reading
     // Start up ADC for capacitor pin
     DIDR0 |= (1 << CAP_DIDR);                           // disable digital input on ADC pin to reduce power consumption
@@ -379,12 +355,11 @@ int main(void) {
     //ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
 //#endif
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
-
+    
+    // Read cap value, twice per datasheet
     // Wait for completion
     while (ADCSRA & (1 << ADSC));
-    // Start again as datasheet says first result is unreliable
     ADCSRA |= (1 << ADSC);
-    // Wait for completion
     while (ADCSRA & (1 << ADSC));
     cap_val = ADCH; // save this for later
 
@@ -424,55 +399,47 @@ int main(void) {
         solid_low  = SOLID_LOW2;
         solid_high = SOLID_HIGH2;
     }
-    
+   
+    //set the direction and first mode
+    int8_t dir;
+    uint8_t start;
+    if ((config & 4) == 0){
+        dir = 1;
+        start = solid_low;
+    } else {
+        dir = -1;
+        start = solid_high;
+    }
+
     if (cap_val > CAP_SHORT) {
         // We don't care what the value is as long as it's over 15
         fast_presses = (fast_presses+1) & 0x1f;
         // Indicates they did a short press, go to the next mode
-        if ((config & 4) == 0){ 
-            mode_idx = next(mode_idx); // Will handle wrap arounds
-        } else {
-            mode_idx = prev(mode_idx);
-        }
+        mode_idx = next(mode_idx, dir, start); // Will handle wrap arounds
 
     } else if (cap_val > CAP_MED && ((config & 8) != 0)) {
         fast_presses = 0;
         // User did a medium press, go back one mode
-        mode_idx = med(mode_idx);
-    
+        mode_idx = med(mode_idx, dir, start);
     } else {
         // Long press, keep the same mode
         // ... or reset to the first mode
         fast_presses = 0;
         if ((config & 2) == 0) {
             // Reset to the first mode
-            if ((config & 4) == 0 ){
-                mode_idx = solid_low;
-            } else {
-                mode_idx = solid_high;
-            }
+            mode_idx = start;
         }
     }
     save_state(mode_idx);
 
-    // Turn off ADC
-    //ADC_off();
-
     // Charge up the capacitor by setting CAP_PIN to output
     DDRB  |= (1 << CAP_PIN);    // Output
     PORTB |= (1 << CAP_PIN);    // High
-
-    // Turn features on or off as needed
     ADC_on();
-    //ACSR   |=  (1<<7); //AC off
 
-    // Enable sleep mode set to Idle that will be triggered by the sleep_mode() command.
-    // Will allow us to go idle between WDT interrupts
-   // set_sleep_mode(SLEEP_MODE_IDLE);  // not used due to blinky modes
     uint8_t ticks = 0;
     uint8_t output;
     uint8_t lowbatt_cnt = 0;
-    uint8_t i = 0;
     uint8_t voltage;
     while(1) {
         // Get the voltage for later 
@@ -480,16 +447,16 @@ int main(void) {
         // Wait for completion
         while (ADCSRA & (1 << ADSC));
         voltage = ADCH;
+
         output = modesNx[mode_idx];
+
         if (fast_presses > 0x0f) {  // Config mode
             _delay_s();       // wait for user to stop fast-pressing button
             fast_presses = 0; // exit this mode after one use
             mode_idx = solid_low;
 
-            // Loop through each config option,
-            // toggle, blink the mode number,
-            // wait a second for user to confirm,
-            // toggle back.
+            // Loop through each config option, toggle, blink the mode number,
+            // buzz a second for user to confirm, toggle back.
             //
             // Config items:
             //
@@ -501,20 +468,22 @@ int main(void) {
             // Each toggle's blink count will be
             // linear, so 1 blink for Mode Group,
             // 3 blinks for Reverse Mode Order,
-            // 4 blinks for Medium Press. 
-            uint8_t item=1;
+            // 4 blinks for Medium Press.
+
             uint8_t blinks=1;
-            for (; item<=8; item<<=1, blinks++) {
+            for (i=1; i<=8; i<<=1, blinks++) {
                 blink(blinks, 124, 30);
                 _delay_ms(50);
-                config ^= item;
+                config ^= i;
                 save_state(mode_idx);
                 blink(48, 15, 20);
-                config ^= item;
+                config ^= i;
                 save_state(mode_idx);
                 _delay_s();
             }
-        } else if (output == STROBE || output == BIKING_STROBE) {
+        }
+        
+        if (output == STROBE || output == BIKING_STROBE) {
             // 10Hz tactical strobe
             blink(4, 25, 255);
             if (output == BIKING_STROBE) {
@@ -534,11 +503,10 @@ int main(void) {
         } else {  // Regular non-hidden solid mode
             // Do some magic here to handle turbo step-down
             ticks ++;
-            if ((ticks > TURBO_TIMEOUT) && (mode_idx == solid_high)) {
+            if ((ticks > TURBO_TIMEOUT) && (output == TURBO)) {
                 mode_idx = solid_high - 1; // step down to second-highest mode
             }
             set_mode(mode_idx);
-            // Otherwise, just sleep.
             _delay_s();
         }
         
@@ -568,9 +536,8 @@ int main(void) {
             mode_idx = i;
             set_mode(mode_idx);
             lowbatt_cnt = 0;
-            // Wait at least 2 seconds before lowering the level again
-            _delay_ms(250);  // this will interrupt blinky modes
         }
+
         // If we got this far, the user has stopped fast-pressing.
         // So, don't enter config mode.
         fast_presses = 0;
