@@ -303,6 +303,7 @@ inline uint8_t med(uint8_t i, int8_t dir, uint8_t start){
        // Otherwise, jump to hidden modes 
        i = HIDDEN_LOW;
    }
+   return i;
 }
 
 inline void ADC_on() {
@@ -363,7 +364,7 @@ int main(void) {
 #if (ATTINY == 13)
     ADMUX  = (1 << REFS0) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC3/PB3
 #elif (ATTINY == 25 || ATTINY == 85)
-    //ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
+    ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
 #endif
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
     
@@ -386,12 +387,8 @@ int main(void) {
     TCCR0B = 0x01; // pre-scaler for timer (1 => 1, 2 => 8, 3 => 64...)
 
     // Read config values and saved state
-    uint8_t eep=restore_state();
-    // unpack the config data
-    if (eepos < EEPLEN) {
-        config = (eep & ~0xF0);
-        mode_idx = (eep >> 4 );
-    }
+    config=restore_state();
+    mode_idx = (config >> 4 );
 
     // Enable the current mode group
 
