@@ -7,18 +7,18 @@
 
 // set some hardware-specific values...
 // (while configuring this firmware, skip this section)
-//#if (ATTINY == 13)
+#if (ATTINY == 13)
 #define F_CPU 4800000UL
 #define EEPLEN 64
-//#elif (ATTINY == 25)
-//#define F_CPU 8000000UL
-//#define EEPLEN 128
-//#elif (ATTINY == 85)
-//#define F_CPU 8000000UL
-//#define EEPLEN 512
-//#else
-//Hey, you need to define ATTINY.
-//#endif
+#elif (ATTINY == 25)
+#define F_CPU 8000000UL
+#define EEPLEN 128
+#elif (ATTINY == 85)
+#define F_CPU 8000000UL
+#define EEPLEN 512
+#else
+Hey, you need to define ATTINY.
+#endif
 
 /*
  * =========================================================================
@@ -34,11 +34,11 @@
 #define OWN_DELAY           // Should we use the built-in delay or our own?
 // Adjust the timing per-driver, since the hardware has high variance
 // Higher values will run slower, lower values run faster.
-//#if (ATTINY == 13)
+#if (ATTINY == 13)
 #define DELAY_TWEAK         950
-//#elif (ATTINY == 25 || ATTINY == 85)
-//#define DELAY_TWEAK         2000
-//#endif
+#elif (ATTINY == 25 || ATTINY == 85)
+#define DELAY_TWEAK         2000
+#endif
 
 // WARNING: You can only have a maximum of 16 modes TOTAL
 // That means NUM_MODES1 + NUM_MODES2 + NUM_HIDDEN MUST be <= 16
@@ -133,9 +133,8 @@ void _delay_s()  // because it saves a bit of ROM space to do it this way
 
 // Some driver-specific globals
 
-//#if ( ATTINY == 13 || ATTINY == 25 )
-    uint8_t eepos = 0;
-//#elif ( ATTINY == 85 )
-//    uint16_t eepos = 0;
-//#endif
-// counter for entering config mode
+#if ( ATTINY == 13 || ATTINY == 25 )
+uint8_t eepos = 0;
+#elif ( ATTINY == 85 )
+uint16_t eepos = 0;
+#endif

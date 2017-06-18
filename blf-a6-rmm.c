@@ -66,6 +66,7 @@
 // Ignore a spurious warning, we did the cast on purpose
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
 
+// counter for entering config mode
 // (needs to be remembered while off, but only for up to half a second)
 uint8_t fast_presses __attribute__ ((section (".noinit")));
 
@@ -81,11 +82,11 @@ const uint8_t voltage_blinks[] = {
 void save_state(uint8_t idx) {  // central method for writing (with wear leveling)
     // a single 16-bit write uses less ROM space than two 8-bit writes
     uint8_t eep;
-//#if ( ATTINY == 13 || ATTINY == 25 )
+#if ( ATTINY == 13 || ATTINY == 25 )
     uint8_t oldpos=eepos;
-//#elif ( ATTINY == 85 ) 
-//    uint16_t oldpos=eepos;
-//#endif
+#elif ( ATTINY == 85 ) 
+    uint16_t oldpos=eepos;
+#endif
     eepos = (eepos+1) & (EEPLEN-1);  // wear leveling, use next cell
     // Bitfield all the things!
     // This limits the max number of brightness settings to 15.  More will clobber config settings.
@@ -135,11 +136,11 @@ inline uint8_t med(uint8_t i, int8_t dir, uint8_t start){
 
 inline void ADC_on() {
     DIDR0 |= (1 << ADC_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-//#if (ATTINY == 13)
+#if (ATTINY == 13)
     ADMUX  = (1 << REFS0) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-//#elif (ATTINY == 25 || ATTINY == 85)
-//    ADMUX  = (1 << REFS1) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-//#endif
+#elif (ATTINY == 25 || ATTINY == 85)
+    ADMUX  = (1 << REFS1) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
+#endif
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
 }
 
@@ -188,11 +189,11 @@ int main(void) {
     // Read the off-time cap *first* to get the most accurate reading
     // Start up ADC for capacitor pin
     DIDR0 |= (1 << CAP_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-//#if (ATTINY == 13)
+#if (ATTINY == 13)
     ADMUX  = (1 << REFS0) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC3/PB3
-//#elif (ATTINY == 25 || ATTINY == 85)
-//    ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-//#endif
+#elif (ATTINY == 25 || ATTINY == 85)
+    ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
+#endif
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
     
     // Read cap value, twice per datasheet
