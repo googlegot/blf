@@ -182,6 +182,23 @@ void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
     }
 }
 
+uint8_t get_voltage(){
+    // Get the voltage for later 
+    ADCSRA |= (1 << ADSC);
+    // Wait for completion
+    while (ADCSRA & (1 << ADSC));
+    return ADCH;
+}
+
+void emergency_shutdown(){
+    // Shut down, voltage is too low.
+    blink(2, 50, 30);
+    set_output(0,0);
+    // Power down as many components as possible
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    sleep_mode();
+}
+
 int main(void) {
     uint8_t mode_idx=NUM_HIDDEN;
     uint8_t cap_val;
@@ -278,13 +295,15 @@ int main(void) {
     uint8_t ticks = 0;
     uint8_t output;
     uint8_t lowbatt_cnt = 0;
-    uint8_t voltage;
+    uint8_t voltage = get_voltage();
+    
+    // Protect the battery if we're just starting and the voltage is too low.
+    if (voltage < ADC_LOW) {
+        emergency_shutdown();
+    }
+    
     while(1) {
-        // Get the voltage for later 
-        ADCSRA |= (1 << ADSC);
-        // Wait for completion
-        while (ADCSRA & (1 << ADSC));
-        voltage = ADCH;
+        voltage = get_voltage();
 
         output = modesNx[mode_idx];
 
@@ -355,24 +374,23 @@ int main(void) {
         }
         // See if it's been low for a while, and maybe step down
         if (lowbatt_cnt >= 8) {
-            i = mode_idx; // save space by not accessing mode_idx more than necessary
-            // properly track hidden vs normal modes
-            if (i < solid_low) {
-                // step down from blinky modes to medium
-                i = solid_high - 2;
-            } else if (mode_idx > solid_low) {
-                // step down from solid modes one at a time
-                i --;
-            } else { // Already at the lowest mode
-                i = solid_low;
-                // Turn off the light
-                set_output(0,0);
-                // Power down as many components as possible
-                set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-                sleep_mode();
+            // Skip FET and blinky modes if they're in the normal mode rotation
+            for (i=mode_idx; i>solid_low && modesNx[i] > 0; i--){}
+            
+            if (i < solid_low) { 
+                i=solid_low; // If in hidden modes, drop to low       
+            } else if (i == solid_low) {
+                // If we're already at solid_low, save state at low and turn off
+                mode_idx = i;
+                set_mode(i);
+                emergency_shutdown();
+            } else {
+                // Fet is inactive, we're not in a hidden mode, drop down a level
+                i--;
             }
-            mode_idx = i;
-            set_mode(mode_idx);
+            
+            mode_idx = i; 
+            set_mode(i);
             lowbatt_cnt = 0;
         }
 

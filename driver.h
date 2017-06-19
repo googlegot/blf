@@ -1,7 +1,7 @@
 
 
 // Choose your MCU here, or in the build script
-#define ATTINY 13
+//#define ATTINY 13
 //#define ATTINY 25
 //#define ATTINY 85
 
