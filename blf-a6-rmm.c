@@ -389,8 +389,8 @@ int main(void) {
 #ifdef TEMP_CAL_MODE
         if (output == TEMP_CAL_MODE) {
             blink(5, 124, 30);
-            _delay_s();
             save_maxtemp(255);
+            _delay_s(); _delay_s();
             set_output(255,0);
             while(1) {
                 maxtemp = get_temperature();
