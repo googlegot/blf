@@ -192,7 +192,7 @@ uint8_t get_voltage(){
 
 void emergency_shutdown(){
     // Shut down, voltage is too low.
-    blink(2, 50, 30);
+    blink(3, 50, 30);
     set_output(0,0);
     // Power down as many components as possible
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
@@ -297,9 +297,12 @@ int main(void) {
     uint8_t lowbatt_cnt = 0;
     uint8_t voltage = get_voltage();
     
-    // Protect the battery if we're just starting and the voltage is too low.
     if (voltage < ADC_LOW) {
+        // Protect the battery if we're just starting and the voltage is too low.
         emergency_shutdown();
+    } else if (voltage < ADC_25){
+        // If the battery is getting low, flash twice when turning on or changing brightness
+        blink(2, 50, 30);
     }
     
     while(1) {
