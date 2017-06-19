@@ -87,7 +87,7 @@ void save_state(uint8_t idx) {  // central method for writing (with wear levelin
 #elif ( ATTINY == 85 ) 
     uint16_t oldpos=eepos;
 #endif
-    eepos = (eepos+1) & (EEPLEN-1);  // wear leveling, use next cell
+    eepos = (eepos+1) & (EEPMODE - 1);  // wear leveling, use next cell
     // Bitfield all the things!
     // This limits the max number of brightness settings to 15.  More will clobber config settings.
     // Layout is: IIIINMRP (mode (I)ndex, mode (N)umber, mode (M)emory, mode (R)everse, medium (P)ress) 
@@ -96,11 +96,21 @@ void save_state(uint8_t idx) {  // central method for writing (with wear levelin
     eeprom_write_byte((uint8_t *)(eepos), eep);      // save current state
     eeprom_write_byte((uint8_t *)(oldpos), 0xff);    // erase old state
 }
+#ifdef TEMP_CAL_MODE
+void save_maxtemp(uint8_t maxtemp){
+    eeprom_write_byte((uint8_t *)(EEPLEN - 2), maxtemp);
+}
 
+inline uint8_t restore_maxtemp(){
+    uint8_t maxtemp = eeprom_read_byte((uint8_t *)(EEPLEN - 2));
+    if ( maxtemp == 0 ) { maxtemp = 79; }
+    return maxtemp;
+}
+#endif
 inline uint8_t restore_state() {
     uint8_t eep;
     // find the config data
-    for(eepos=0; eepos<EEPLEN; eepos++) {
+    for(eepos=0; eepos<EEPMODE; eepos++) {
         eep = ~(eeprom_read_byte((const uint8_t *)eepos));
         if (eep != 0x00) {
             return eep;
@@ -133,20 +143,26 @@ inline uint8_t med(uint8_t i, int8_t dir, uint8_t start){
     }
     return i;
 }
-
-inline void ADC_on() {
-    DIDR0 |= (1 << ADC_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-#if (ATTINY == 13)
-    ADMUX  = (1 << REFS0) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-#elif (ATTINY == 25 || ATTINY == 85)
-    ADMUX  = (1 << REFS1) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
+#ifdef TEMP_CAL_MODE
+inline void ADC_on_temperature() {
+    // select ADC4 by writing 0b00001111 to ADMUX
+    // 1.1v reference, left-adjust, ADC4
+    ADMUX  = (1 << V_REF) | (1 << ADLAR) | TEMP_CHANNEL;
+    // disable digital input on ADC pin to reduce power consumption
+    //DIDR0 |= (1 << TEMP_DIDR);
+    // enable, start, prescale
+    ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;
+}
 #endif
+void ADC_on() {
+    DIDR0 |= (1 << ADC_DIDR);                           // disable digital input on ADC pin to reduce power consumption
+    ADMUX  = (1 << V_REF) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
 }
 
 inline void set_output(uint8_t pwm1, uint8_t pwm2) {
     PWM_LVL = pwm1;
-    ALT_PWM_LVL = pwm2;
+    ALT_PWM_LVL = pwm2; 
 }
 
 #ifdef DEBUG            
@@ -198,21 +214,34 @@ void emergency_shutdown(){
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_mode();
 }
+#ifdef TEMP_CAL_MODE
+uint8_t get_temperature() {
+    ADC_on_temperature();
+    // average a few values; temperature is noisy
+    uint16_t temp = 0;
+    uint8_t i;
+    get_voltage();
+    for(i=0; i<16; i++) {
+        temp += get_voltage();
+    }
+    temp >>= 4;
+    return temp;
+}
+#endif
 
 int main(void) {
-    uint8_t mode_idx=NUM_HIDDEN;
+#ifdef TEMP_CAL_MODE
+    uint8_t maxtemp = restore_maxtemp();
+#endif
+	uint8_t mode_idx=NUM_HIDDEN;
     uint8_t cap_val;
     uint8_t i=2;
     // Read the off-time cap *first* to get the most accurate reading
     // Start up ADC for capacitor pin
     DIDR0 |= (1 << CAP_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-#if (ATTINY == 13)
-    ADMUX  = (1 << REFS0) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC3/PB3
-#elif (ATTINY == 25 || ATTINY == 85)
-    ADMUX  = (1 << REFS1) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-#endif
+    ADMUX  = (1 << V_REF) | (1 << ADLAR) | CAP_CHANNEL; // 1.1v reference, left-adjust, ADC3/PB3
     ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
-    
+
     // Read cap value, twice per datasheet
     // Wait for completion
     while (ADCSRA & (1 << ADSC));
@@ -233,7 +262,7 @@ int main(void) {
 
     // Read config values and saved state
     uint8_t eep=restore_state();
-    if (eepos < EEPLEN){
+    if (eepos < EEPMODE){
         config = (eep & ~0xF0);
         mode_idx = (eep >> 4 );
     }
@@ -294,18 +323,22 @@ int main(void) {
 
     uint8_t ticks = 0;
     uint8_t output;
-    uint8_t lowbatt_cnt = 0;
+    uint8_t lowbatt_overheat_cnt = 0;
     uint8_t voltage = get_voltage();
     
     if (voltage < ADC_LOW) {
         // Protect the battery if we're just starting and the voltage is too low.
         emergency_shutdown();
-    } else if (voltage < ADC_25){
+    } else if (voltage < ADC_0){
         // If the battery is getting low, flash twice when turning on or changing brightness
         blink(2, 50, 30);
     }
     
     while(1) {
+#ifdef TEMP_CAL_MODE
+		uint8_t temp=get_temperature();
+		ADC_on();
+#endif
         voltage = get_voltage();
 
         output = modesNx[mode_idx];
@@ -314,7 +347,9 @@ int main(void) {
             _delay_s();       // wait for user to stop fast-pressing button
             fast_presses = 0; // exit this mode after one use
             mode_idx = solid_low;
-
+#ifdef TEMP_CAL_MODE
+            output = TEMP_CAL_MODE;
+#endif
             // Loop through each config option, toggle, blink the mode number,
             // buzz a second for user to confirm, toggle back.
             //
@@ -344,25 +379,25 @@ int main(void) {
         }
 #ifdef SOS
         if (output == SOS) {
-            for (i=3; i<0; i--) {
-                set_output(0,255);
-                _delay_ms(150);
-                set_output(0,0);
-                _delay_ms(50);
+            blink(3,100,255);
+            _delay_ms(200);
+            blink(3,200,255);
+            blink(3,100,255);
+            _delay_s();
+        } else 
+#endif
+#ifdef TEMP_CAL_MODE
+        if (output == TEMP_CAL_MODE) {
+            blink(5, 124, 30);
+            _delay_s();
+            save_maxtemp(255);
+            set_output(255,0);
+            while(1) {
+                maxtemp = get_temperature();
+                save_maxtemp(maxtemp);
+                _delay_s();
             }
-            for (i=3; i<0; i--) {
-                set_output(0,255);
-                _delay_ms(50);
-                set_output(0,0);
-                _delay_ms(50);
-            }
-            for (i=3; i<0; i--) {
-                set_output(0,255);
-                _delay_ms(150);
-                set_output(0,0);
-                _delay_ms(50);
-            }
-        } else
+        } else 
 #endif
         if (output == STROBE || output == BIKING_STROBE) {
             // 10Hz tactical strobe
@@ -390,14 +425,18 @@ int main(void) {
             set_mode(mode_idx);
             _delay_s();
         }
-        
+#ifdef TEMP_CAL_MODE        
+        if (voltage < ADC_LOW || temp >= maxtemp) {
+#else
         if (voltage < ADC_LOW) {
-            lowbatt_cnt ++;
+#endif
+            lowbatt_overheat_cnt ++;
         } else {
-            lowbatt_cnt = 0;
+            lowbatt_overheat_cnt = 0;
         }
+
         // See if it's been low for a while, and maybe step down
-        if (lowbatt_cnt >= 8) {
+        if (lowbatt_overheat_cnt >= 15) {
             // Skip FET and blinky modes if they're in the normal mode rotation
             for (i=mode_idx; i>solid_low && modesNx[i] > 0; i--){}
             
@@ -415,7 +454,7 @@ int main(void) {
             
             mode_idx = i; 
             set_mode(i);
-            lowbatt_cnt = 0;
+            lowbatt_overheat_cnt = 0;
         }
 
         // If we got this far, the user has stopped fast-pressing.

@@ -1,3 +1,12 @@
+// Required libraries 
+//#include <avr/pgmspace.h>
+//#include <avr/io.h>
+//#include <avr/interrupt.h>
+#include <avr/eeprom.h>
+#include <avr/sleep.h>
+//#include <avr/power.h>
+
+#include <util/delay_basic.h>
 
 
 // Choose your MCU here, or in the build script
@@ -9,15 +18,24 @@
 // (while configuring this firmware, skip this section)
 #if (ATTINY == 13)
 #define F_CPU 4800000UL
+#define EEPMODE 48
 #define EEPLEN 64
 #elif (ATTINY == 25)
 #define F_CPU 8000000UL
+#define EEPMODE 96
 #define EEPLEN 128
 #elif (ATTINY == 85)
 #define F_CPU 8000000UL
+#define EEPMODE 384
 #define EEPLEN 512
 #else
 Hey, you need to define ATTINY.
+#endif
+
+#if (ATTINY == 13)
+#define V_REF REFS0
+#elif (ATTINY == 25 || ATTINY == 85)
+#define V_REF REFS1
 #endif
 
 /*
@@ -50,6 +68,8 @@ Hey, you need to define ATTINY.
 #define ADC_LOW         113 // When do we start ramping down (2.8V)
 #define ADC_CRIT        109 // When do we shut the light off (2.7V)
 
+#define TEMP_CHANNEL 0b00001111
+
 // the BLF EE A6 driver may have different offtime cap values than most other drivers
 // Values are between 1 and 255, and can be measured with offtime-cap.c
 // These #defines are the edge boundaries, not the center of the target.
@@ -74,15 +94,6 @@ Hey, you need to define ATTINY.
  */
 
 
-// Required libraries 
-//#include <avr/pgmspace.h>
-//#include <avr/io.h>
-//#include <avr/interrupt.h>
-#include <avr/eeprom.h>
-#include <avr/sleep.h>
-//#include <avr/power.h>
-
-#include <util/delay_basic.h>
 void _delay_ms(uint16_t n)
 {
     // TODO: make this take tenths of a ms instead of ms,

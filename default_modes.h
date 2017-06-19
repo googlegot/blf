@@ -10,18 +10,18 @@
 #define NUM_MODES2          4
 #define MODESNx2            0,0,90,255
 #define MODES1x2            3,110,255,0
-//#define MODES_PWM2          PHASE,FAST,FAST,PHASE
 
 // Hidden modes are *before* the lowest (moon) mode
 #define NUM_HIDDEN          4
-#define HIDDENMODES         TURBO,STROBE,BATTCHECK,SOS
+#define HIDDENMODES         TURBO,STROBE,BATTCHECK,BIKING_STROBE
 #define HIDDENMODES_ALT     0,0,0,0   // Zeroes, same length as NUM_HIDDEN
 
 #define TURBO     255       // Convenience code for turbo mode
 #define BATTCHECK 254       // Convenience code for battery check mode
 #define STROBE    253       // Convenience code for strobe mode
 #define BIKING_STROBE 252   // Convenience code for biking strobe mode
-#define SOS 251             // Convenience code for SOS mode
+//#define TEMP_CAL_MODE 251   // Convenience code for temperature calibration mode 
+//#define SOS 250           // Convenience code for SOS mode
 // How many timer ticks before before dropping down.
 // Each timer tick is 1s, so "30" would be a 30-second stepdown.
 // Max value of 255 unless you change "ticks"
