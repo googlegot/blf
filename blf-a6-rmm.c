@@ -342,7 +342,28 @@ int main(void) {
                 _delay_s();
             }
         }
-        
+#ifdef SOS
+        if (output == SOS) {
+            for (i=3; i<0; i--) {
+                set_output(0,255);
+                _delay_ms(150);
+                set_output(0,0);
+                _delay_ms(50);
+            }
+            for (i=3; i<0; i--) {
+                set_output(0,255);
+                _delay_ms(50);
+                set_output(0,0);
+                _delay_ms(50);
+            }
+            for (i=3; i<0; i--) {
+                set_output(0,255);
+                _delay_ms(150);
+                set_output(0,0);
+                _delay_ms(50);
+            }
+        } else
+#endif
         if (output == STROBE || output == BIKING_STROBE) {
             // 10Hz tactical strobe
             blink(4, 25, 255);

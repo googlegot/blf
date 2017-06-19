@@ -40,43 +40,6 @@ Hey, you need to define ATTINY.
 #define DELAY_TWEAK         2000
 #endif
 
-// WARNING: You can only have a maximum of 16 modes TOTAL
-// That means NUM_MODES1 + NUM_MODES2 + NUM_HIDDEN MUST be <= 16
-// Mode group 1
-#define NUM_MODES1          7
-// PWM levels for the big circuit (FET or Nx7135)
-#define MODESNx1            0,0,0,7,56,137,255
-// PWM levels for the small circuit (1x7135)
-#define MODES1x1            3,20,110,255,255,255,0
-// My sample:     6=0..6,  7=2..11,  8=8..21(15..32)
-// Krono sample:  6=5..21, 7=17..32, 8=33..96(50..78)
-// Manker2:       2=21, 3=39, 4=47, ... 6?=68
-// PWM speed for each mode
-//#define MODES_PWM1          PHASE,FAST,FAST,FAST,FAST,FAST,PHASE
-// Mode group 2
-#define NUM_MODES2          4
-#define MODESNx2            0,0,90,255
-#define MODES1x2            3,110,255,0
-//#define MODES_PWM2          PHASE,FAST,FAST,PHASE
-
-// Hidden modes are *before* the lowest (moon) mode
-#define NUM_HIDDEN          4
-#define HIDDENMODES         TURBO,STROBE,BATTCHECK,BIKING_STROBE
-//#define HIDDENMODES_PWM     PHASE,PHASE,PHASE,PHASE
-#define HIDDENMODES_ALT     0,0,0,0   // Zeroes, same length as NUM_HIDDEN
-
-#define TURBO     255       // Convenience code for turbo mode
-#define BATTCHECK 254       // Convenience code for battery check mode
-// Uncomment to enable tactical strobe mode
-#define STROBE    253       // Convenience code for strobe mode
-// Uncomment to unable a 2-level stutter beacon instead of a tactical strobe
-#define BIKING_STROBE 252   // Convenience code for biking strobe mode
-
-// How many timer ticks before before dropping down.
-// Each timer tick is 1s, so "30" would be a 30-second stepdown.
-// Max value of 255 unless you change "ticks"
-#define TURBO_TIMEOUT       60
-
 // These values were measured using wight's "A17HYBRID-S" driver built by DBCstm.
 // Your mileage may vary.
 #define ADC_100         170 // the ADC value for 100% full (4.2V resting)
