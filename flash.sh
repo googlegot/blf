@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 # This is a simple script for linux userspace gpio-based flashing of atmel mcu devices. 
+# This particular version pushes the firmware to a raspberry pi I'm using to flash
+# and runs the flash there.
 
 file=$1
 pins="9 10 11 25"
