@@ -20,8 +20,14 @@
 #define BATTCHECK 254       // Convenience code for battery check mode
 #define STROBE    253       // Convenience code for strobe mode
 #define BIKING_STROBE 252   // Convenience code for biking strobe mode
+
+// Temp cal mode allows temperature monitoring.  It is HUGE and really only works 
+// on the attiny13 if you disable a few other options.  It is also broken at the moment,
+// feel free to fix it! 
 //#define TEMP_CAL_MODE 251   // Convenience code for temperature calibration mode 
+
 //#define SOS 250           // Convenience code for SOS mode
+
 // How many timer ticks before before dropping down.
 // Each timer tick is 1s, so "30" would be a 30-second stepdown.
 // Max value of 255 unless you change "ticks"
@@ -42,14 +48,32 @@
 uint8_t solid_low;
 uint8_t solid_high;
 
-// Modes (gets set when the light starts up based on saved config values)
+// modes (gets set when the light starts up based on saved config values)
 const uint8_t modesNx[] = { HIDDENMODES, MODESNx1, MODESNx2 };
 const uint8_t modes1x[] = { HIDDENMODES_ALT, MODES1x1, MODES1x2 };
 
-// Config / state variables
-// Config bitfield
-// mode group  = 1
-// memory      = 2
-// mode_dir    = 4
-// med_press   = 8
-uint8_t config = 8;
+// config / state variables
+// config bitfield
+#define MODE_GROUP   1
+#define MEMORY       2
+#define MODE_DIR     4
+#define MED_PRESS    8
+// Lock mode disables moving to another mode after 3 seconds of being in that mode.
+// To exit the mode, turn the flashlight off for 3 seconds, and it will either start
+// from the beginning or continue where you left off depending on whether mode memory
+// is enabled.
+//
+// Comment out the next line to disable this function.
+#define LOCK_MODE   16
+
+// Set the bit value of the config mode you'd like when starting fresh,
+// or when the config is wiped
+#define DEFAULT_CONFIG 8 // Medium press enabled by default
+
+#ifdef LOCK_MODE
+#define CONFIGMAX 32
+#else
+#define CONFIGMAX 16
+#endif
+
+uint8_t config = DEFAULT_CONFIG;

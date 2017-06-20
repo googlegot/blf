@@ -70,6 +70,11 @@
 // (needs to be remembered while off, but only for up to half a second)
 uint8_t fast_presses __attribute__ ((section (".noinit")));
 
+#ifdef LOCK_MODE
+// LOCK_MODE variable
+uint8_t locked_in  __attribute__ ((section (".noinit")));
+#endif
+
 const uint8_t voltage_blinks[] = {
     ADC_0,    // 1 blink  for 0%-25%
     ADC_25,   // 2 blinks for 25%-50%
@@ -79,35 +84,19 @@ const uint8_t voltage_blinks[] = {
     255,      // Ceiling, don't remove
 };
 
-void save_state(uint8_t idx) {  // central method for writing (with wear leveling)
+void save_mode_idx(uint8_t idx) {  // central method for writing (with wear leveling)
     // a single 16-bit write uses less ROM space than two 8-bit writes
-    uint8_t eep;
 #if ( ATTINY == 13 || ATTINY == 25 )
     uint8_t oldpos=eepos;
 #elif ( ATTINY == 85 ) 
     uint16_t oldpos=eepos;
 #endif
     eepos = (eepos+1) & (EEPMODE - 1);  // wear leveling, use next cell
-    // Bitfield all the things!
-    // This limits the max number of brightness settings to 15.  More will clobber config settings.
-    // Layout is: IIIINMRP (mode (I)ndex, mode (N)umber, mode (M)emory, mode (R)everse, medium (P)ress) 
-    eep = ~(config | (idx << 4));
-    // Flip it so if all config options are enabled and index is 15, we still find the config
-    eeprom_write_byte((uint8_t *)(eepos), eep);      // save current state
+    eeprom_write_byte((uint8_t *)(eepos), ~idx);      // save current index, flipped
     eeprom_write_byte((uint8_t *)(oldpos), 0xff);    // erase old state
 }
-#ifdef TEMP_CAL_MODE
-void save_maxtemp(uint8_t maxtemp){
-    eeprom_write_byte((uint8_t *)(EEPLEN - 2), maxtemp);
-}
 
-inline uint8_t restore_maxtemp(){
-    uint8_t maxtemp = eeprom_read_byte((uint8_t *)(EEPLEN - 2));
-    if ( maxtemp == 0 ) { maxtemp = 79; }
-    return maxtemp;
-}
-#endif
-inline uint8_t restore_state() {
+inline uint8_t restore_mode_idx() {
     uint8_t eep;
     // find the config data
     for(eepos=0; eepos<EEPMODE; eepos++) {
@@ -118,6 +107,27 @@ inline uint8_t restore_state() {
     } 
     return 0;
 }
+
+
+void save_config(uint8_t config) {
+    eeprom_write_byte((uint8_t *)(EEPLEN - 2), ~config); // save the config
+}
+
+inline uint8_t restore_config() {
+    return ~eeprom_read_byte((uint8_t *)(EEPLEN - 2));
+}
+
+#ifdef TEMP_CAL_MODE
+void save_maxtemp(uint8_t maxtemp){
+    eeprom_update_byte((uint8_t *)(EEPLEN - 3), maxtemp);
+}
+
+inline uint8_t restore_maxtemp(){
+    uint8_t maxtemp = eeprom_read_byte((uint8_t *)(EEPLEN - 3));
+    if ( maxtemp == 0 ) { maxtemp = 79; }
+    return maxtemp;
+}
+#endif
 
 inline uint8_t next(uint8_t i, int8_t dir, uint8_t start){
     i += dir;
@@ -185,7 +195,7 @@ void debug_byte(uint8_t byte) {
 
 void set_mode(uint8_t idx) {
     set_output(modesNx[idx], modes1x[idx]);
-    save_state(idx);
+    save_mode_idx(idx);
 }
 
 void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
@@ -229,11 +239,15 @@ uint8_t get_temperature() {
 }
 #endif
 
-int main(void) {
-#ifdef TEMP_CAL_MODE
-    uint8_t maxtemp = restore_maxtemp();
+#ifdef LOCK_MODE
+void set_lock() {
+    if (locked_in != 1 && ((config & LOCK_MODE) != 0)) {
+        _delay_s(); _delay_s(); _delay_s();
+        locked_in = 1;
+    }
+}
 #endif
-	uint8_t mode_idx=NUM_HIDDEN;
+int main(void) {
     uint8_t cap_val;
     uint8_t i=2;
     // Read the off-time cap *first* to get the most accurate reading
@@ -261,13 +275,20 @@ int main(void) {
     TCCR0B = 0x01; // pre-scaler for timer (1 => 1, 2 => 8, 3 => 64...)
 
     // Read config values and saved state
-    uint8_t eep=restore_state();
-    if (eepos < EEPMODE){
-        config = (eep & ~0xF0);
-        mode_idx = (eep >> 4 );
+    
+    config = restore_config();
+    // Wipe the config if option 5 (with LOCK MODE undefined)
+    // or option 6 (with LOCK MODE defined) is 1
+    if ((config & CONFIGMAX) !=0) {
+        config = 0;
+        save_config(config);
     }
-    // Enable the current mode group
-
+    
+    uint8_t mode_idx = restore_mode_idx();
+#ifdef TEMP_CAL_MODE
+    uint8_t maxtemp = restore_maxtemp();
+#endif
+    
     /*
      * Determine how many solid and hidden modes we have, and where the 
      * boundries for each mode group are.
@@ -276,7 +297,7 @@ int main(void) {
      *
      */
 
-    if ((config & 1) == 0) {
+    if ((config & MODE_GROUP) == 0) {
         solid_low  = SOLID_LOW1; 
         solid_high = SOLID_HIGH1;
     } else {
@@ -287,7 +308,7 @@ int main(void) {
     //set the direction and first mode
     int8_t dir;
     uint8_t start;
-    if ((config & 4) == 0){
+    if ((config & MODE_DIR) == 0){
         dir = 1;
         start = solid_low;
     } else {
@@ -295,26 +316,31 @@ int main(void) {
         start = solid_high;
     }
 
-    if (cap_val > CAP_SHORT) {
+    if (cap_val < CAP_MED || (cap_val < CAP_SHORT && ((config & MED_PRESS) != 0))) {
+        // Long press, keep the same mode
+        // ... or reset to the first mode
+        fast_presses = 0;
+        if ((config & MEMORY) == 0) {
+            // Reset to the first mode
+            mode_idx = start;
+        }
+#ifdef LOCK_MODE
+        locked_in = 0;
+    } else if (locked_in != 0 && ((config & LOCK_MODE) != 0)) {
+        // Do nothing
+#endif    
+    } else if (cap_val < CAP_SHORT) {
+        fast_presses = 0;
+        // User did a medium press, go back one mode
+        mode_idx = med(mode_idx, dir, start);
+    } else {
         // We don't care what the value is as long as it's over 15
         fast_presses = (fast_presses+1) & 0x1f;
         // Indicates they did a short press, go to the next mode
         mode_idx = next(mode_idx, dir, start); // Will handle wrap arounds
 
-    } else if (cap_val > CAP_MED && ((config & 8) != 0)) {
-        fast_presses = 0;
-        // User did a medium press, go back one mode
-        mode_idx = med(mode_idx, dir, start);
-    } else {
-        // Long press, keep the same mode
-        // ... or reset to the first mode
-        fast_presses = 0;
-        if ((config & 2) == 0) {
-            // Reset to the first mode
-            mode_idx = start;
-        }
     }
-    save_state(mode_idx);
+    save_mode_idx(mode_idx);
 
     // Charge up the capacitor by setting CAP_PIN to output
     DDRB  |= (1 << CAP_PIN);    // Output
@@ -359,6 +385,7 @@ int main(void) {
             // 2 = Mode Memory
             // 4 = Reverse Mode Order
             // 8 = Medium Press Disable
+            // 16 = Mode Locking 
             //
             // Each toggle's blink count will be
             // linear, so 1 blink for Mode Group,
@@ -366,16 +393,17 @@ int main(void) {
             // 4 blinks for Medium Press.
 
             uint8_t blinks=1;
-            for (i=1; i<=8; i<<=1, blinks++) {
+            for (i=1; i<=CONFIGMAX; i<<=1, blinks++) {
                 blink(blinks, 124, 30);
                 _delay_ms(50);
                 config ^= i;
-                save_state(mode_idx);
+                save_config(config);
                 blink(48, 15, 20);
                 config ^= i;
-                save_state(mode_idx);
+                save_config(config);
                 _delay_s();
             }
+
         }
 #ifdef SOS
         if (output == SOS) {
@@ -406,6 +434,9 @@ int main(void) {
                 // 2-level stutter beacon for biking and such
                 // normal version
                 set_output(0,255);
+#ifdef LOCK_MODE
+                set_lock();
+#endif
                 _delay_s();
             }
         } else if (output == BATTCHECK) {
@@ -423,6 +454,9 @@ int main(void) {
                 mode_idx = solid_high - 2; // step down to second-highest mode
             }
             set_mode(mode_idx);
+#ifdef LOCK_MODE
+            set_lock();
+#endif
             _delay_s();
         }
 #ifdef TEMP_CAL_MODE        
@@ -456,7 +490,6 @@ int main(void) {
             set_mode(i);
             lowbatt_overheat_cnt = 0;
         }
-
         // If we got this far, the user has stopped fast-pressing.
         // So, don't enter config mode.
         fast_presses = 0;
