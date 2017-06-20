@@ -58,6 +58,7 @@ const uint8_t modes1x[] = { HIDDENMODES_ALT, MODES1x1, MODES1x2 };
 #define MEMORY       2
 #define MODE_DIR     4
 #define MED_PRESS    8
+#define CONFIG_SET 128
 // Lock mode disables moving to another mode after 3 seconds of being in that mode.
 // To exit the mode, turn the flashlight off for 3 seconds, and it will either start
 // from the beginning or continue where you left off depending on whether mode memory
@@ -68,7 +69,7 @@ const uint8_t modes1x[] = { HIDDENMODES_ALT, MODES1x1, MODES1x2 };
 
 // Set the bit value of the config mode you'd like when starting fresh,
 // or when the config is wiped
-#define DEFAULT_CONFIG 8 // Medium press enabled by default
+#define CONFIG_DEFAULT (MODE_DIR + CONFIG_SET) // Medium press enabled by default
 
 #ifdef LOCK_MODE
 #define CONFIGMAX 32
@@ -76,4 +77,4 @@ const uint8_t modes1x[] = { HIDDENMODES_ALT, MODES1x1, MODES1x2 };
 #define CONFIGMAX 16
 #endif
 
-uint8_t config = DEFAULT_CONFIG;
+uint8_t config = CONFIG_DEFAULT;

@@ -279,8 +279,9 @@ int main(void) {
     config = restore_config();
     // Wipe the config if option 5 (with LOCK MODE undefined)
     // or option 6 (with LOCK MODE defined) is 1
-    if ((config & CONFIGMAX) !=0) {
-        config = 0;
+    // or config is empty (fresh flash)
+    if ((config & CONFIGMAX) !=0 || config == 0) {
+        config = CONFIG_DEFAULT;
         save_config(config);
     }
     
@@ -316,7 +317,7 @@ int main(void) {
         start = solid_high;
     }
 
-    if (cap_val < CAP_MED || (cap_val < CAP_SHORT && ((config & MED_PRESS) != 0))) {
+    if (cap_val < CAP_MED || (cap_val < CAP_SHORT && ((config & MED_PRESS) == 0))) {
         // Long press, keep the same mode
         // ... or reset to the first mode
         fast_presses = 0;

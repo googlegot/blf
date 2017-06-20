@@ -8,6 +8,8 @@ oname="${iname}-${mcu}"
 
 if [ "${mcu}" == "attiny13" ]; then
     mcuvar='13'
+elif [ "${mcu}" == "attiny25" ]; then
+    mcuvar='25'
 elif [ "${mcu}" == "attiny85" ]; then
     mcuvar='85'
 fi
