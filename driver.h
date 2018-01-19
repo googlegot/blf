@@ -102,7 +102,7 @@ void _delay_ms(uint16_t n)
 }
 void _delay_s()  // because it saves a bit of ROM space to do it this way
 {
-    _delay_ms(1000);
+	_delay_ms(1000);
 }
 
 // Some driver-specific globals
