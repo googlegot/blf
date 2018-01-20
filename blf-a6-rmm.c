@@ -88,7 +88,11 @@ const uint8_t voltage_blinks[] = {
 };
 
 // EEPROM_read/write taken from the datasheet
+#if ( ATTINY == 13 || ATTINY == 25 )
 void EEPROM_write(uint8_t Address, uint8_t Data) {
+#elif ( ATTINY == 85 )
+void EEPROM_write(uint16_t Address, uint8_t Data) {
+#endif
 	// Set Programming mode
 	EECR = (0<<EEPM1)|(0>>EEPM0);
 
@@ -106,7 +110,11 @@ void EEPROM_write(uint8_t Address, uint8_t Data) {
 	while(EECR & (1<<EEPE));
 }
 
+#if ( ATTINY == 13 || ATTINY == 25 )
 uint8_t EEPROM_read(uint8_t Address) {
+#elif ( ATTINY == 85 )
+uint8_t EEPROM_read(uint16_t Address) {
+#endif
 	// Set up address register
 	EEARL = Address;
 	// Start eeprom read by writing EERE
@@ -126,9 +134,9 @@ void save_mode_idx(uint8_t idx) {  // Write mode index to EEPROM (with wear leve
 		idx = (NUM_MODES - 1 - idx);
 	}
 	
-	eepos = (eepos+1) & (EEPMODE - 1);            // wear leveling, use next cell
-	EEPROM_write(eepos, ~idx);  // save current index, flipped
-	EEPROM_write(oldpos, 0xff); // erase old state
+	eepos = (eepos+1) & (EEPMODE - 1); // wear leveling, use next cell
+	EEPROM_write(eepos, ~idx);         // save current index, flipped
+	EEPROM_write(oldpos, 0xff);        // erase old state
 }
 
 inline uint8_t restore_mode_idx() {
@@ -166,11 +174,12 @@ inline void restore_config() {
 #endif
 
 inline void ADC_on(uint8_t dpin, uint8_t channel) {
-	DIDR0 |= (1 << dpin);                           // disable digital input on ADC pin to reduce power consumption
-	//DIDR0 |= (1 << ADC_DIDR);                           // disable digital input on ADC pin to reduce power consumption
-	ADMUX  = (1 << V_REF) | (1 << ADLAR) | channel; // 1.1v reference, left-adjust, ADC1/PB2
-	//ADMUX  = (1 << V_REF) | (1 << ADLAR) | ADC_CHANNEL; // 1.1v reference, left-adjust, ADC1/PB2
-	ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   // enable, start, prescale
+	// disable digital input on ADC pin to reduce power consumption
+	DIDR0 |= (1 << dpin);
+	// 1.1v reference, left-adjust, ADC1/PB2
+	ADMUX  = (1 << V_REF) | (1 << ADLAR) | channel; 
+	// enable, start, prescale
+	ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   
 	// Toss out the garbage first result
 	while (ADCSRA & (1 << ADSC));
 }
