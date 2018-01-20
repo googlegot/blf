@@ -6,17 +6,14 @@
 --------------------------------------------
 README
 --------------------------------------------
-
-Well, you've found my first firmware.  It's a work in progress,
-with temperature sensing not functional, but it's mostly complete.
-
 This firmware adds several key items to seriously extend the
 functionality of the attiny13a-based BLF-A6 driver, and compatibles.
+This repo will contain up-to-date attiny13/25/45/85 firmwares in both
+.elf and .hex formats.
 
 --------------------------------------------
 NEW FEATURES
 --------------------------------------------
-
 - Mode order reversal (config option 3)
 - Medium press disablement (config option 4)
 - Mode 'lock' (config option 5)
@@ -28,6 +25,7 @@ USAGE
 --------------------------------------------
 
 Glossary:
+---------
 Short Press - A short tap that quickly breaks the circuit for <0.5 seconds
 Medium Press - A middling tap that breaks the circuit for 1-1.5 seconds
 Long Press - A long press that breaks the circuit for >3 seconds
@@ -43,14 +41,12 @@ Long press to reset to the first mode, unless mode memory is enabled. If
 mode memory is enabled, a long press will return to the last mode you were
 at.
 
-
 Normal Modes:
-------
-Mode group 1 - 7 modes, moon to turbo, visually linear
+-------------
+Mode group 1 - 8 modes, moon to turbo, visually linear
 
 Mode group 2 - 4 modes, moon to turbo, visally jumps from moon to medium,
-then linear to turbo.
-
+then linear to one step below turbo. (modes 1,3,5,7 from mode group 1)
 
 Hidden modes:
 -------------
@@ -63,37 +59,32 @@ will bring you back to the first mode of the mode group you are in.
 
 Hidden modes are always in this order:
 
-TURBO -> STROBE -> Battery Check (1 flash per 25%) -> Biking stutter strobe
-
+Battery Check (1 flash per 25%, 5 for 100%) -> Turbo -> STROBE -> Battery Check -> SOS
 
 Config Mode:
 ------------
 Short press 15 times in quick succession to get to config mode.
 
 Config mode will flash for the config option number, wait a second, then
-'buzz' (a dim strobe) for ~1.5 seconds.  To set the config option, short/medium/long press.
+'buzz' (a fast, dim strobe) for ~1.5 seconds.  To set the config option, short/medium/long press.
 
 Config options:
+---------------
 1. Mode group
-
-This alternates between normal mode groups listed above.
+- This alternates between normal mode groups listed above.
 
 2. Mode Memory
-
-When set, the light will remember your the last mode you were in.
+- When set, the light will remember your the last mode you were in.
 
 3. Mode Order
-
-This selects the order you advance through the mode in (High to Low, or Low to High)
+- This selects the order you advance through the mode in (High to Low, or Low to High)
 
 4. Medium Press Disable
-
-This disables medium press functionality.  This is useful for beginners,
+- This disables medium press functionality.  This is useful for beginners,
 since medium press can be difficult to master at first.
 
 5. Mode Locking
-
-This 'locks' a mode if you stay in that mode for >3 seconds.  Short presses will
+- This 'locks' a mode if you stay in that mode for >3 seconds.  Short presses will
 not change your mode.  To unlock, long press.
 
 This is made for biking, if you hit a bump and it disconnects the battery for a
@@ -104,5 +95,4 @@ WHEN USING YOUR FLASHLIGHT AS YOUR BIKE LIGHT.
 Mode locking only works for normal modes and biking_strobe.
 
 6. Reset
-
-Reset wipes your config settings, back to the default of only medium press enabled.
+- Reset wipes your config settings, back to the default of only medium press enabled.
