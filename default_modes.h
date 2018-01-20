@@ -3,7 +3,7 @@
 
 // Normal modes (mode group 2 is defunct, it now increments mode_idx by 2)
 #define NUM_MODES   8
-#define MODESNx1    0,0,0,7,56,90,137,255 //(FET or Nx7135)
+#define MODESNx1    0,0,0,7,56,90,137,255      //(FET or Nx7135)
 #define MODES1x1    3,20,110,255,255,255,255,0 //(1x7135)
 
 // Hidden modes are *after* the normal modes
@@ -17,9 +17,14 @@
 #define BIKING_STROBE 252 // Convenience code for biking strobe mode
 #define SOS           251 // Convenience code for SOS mode
 
-// Temp cal mode allows temperature monitoring.  It is HUGE and really only works 
+// Temp cal mode allows temperature monitoring.  It is HUGE and really only fits 
 // on the attiny13 if you disable a few other options.  It is also broken at the moment,
 // feel free to fix it! 
+//
+// TODO: Measure temperature on attiny13a using datasheet spec for 
+// WDT Frequency compared to CPU clock.  WDT clock decreases exponentially 
+// with temperature, MCU frequency increases linearly.
+//
 //#define TEMP_CAL_MODE 250   // Convenience code for temperature calibration mode 
 
 
