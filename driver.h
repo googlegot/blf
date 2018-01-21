@@ -56,7 +56,7 @@ Hey, you need to define ATTINY.
 #define DELAY_TWEAK_10ms    9500
 #elif (ATTINY == 25 || ATTINY == 85)
 #define DELAY_TWEAK         2000
-#define DELAY_TWEAK_10ms    20000
+#define DELAY_TWEAK_10ms    19000
 #endif
 
 // These values were measured using wight's "A17HYBRID-S" driver built by DBCstm.
@@ -110,7 +110,7 @@ Hey, you need to define ATTINY.
 // Max delay time 2550ms
 void _delay_10_ms(uint8_t n)
 {
-    while(n-- > 0) _delay_loop_2(DELAY_TWEAK_10ms);
+   	while(n-- > 0) _delay_loop_2(DELAY_TWEAK_10ms);
 }
 void _delay_s()  // because it saves a bit of ROM space to do it this way
 {

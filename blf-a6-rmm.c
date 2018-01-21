@@ -424,7 +424,7 @@ int main(void) {
 			uint8_t blinks=1;
 			for (i=1; i<=CONFIG_RESET; i<<=1, blinks++) {
 				blink(blinks, 12, 30);
-				_delay_10_ms(50);
+				_delay_10_ms(5);
 				save_config(config ^= i);
 				blink(48, 1, 20);
 				save_config(config ^= i);

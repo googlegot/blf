@@ -17,16 +17,19 @@
 #define BIKING_STROBE 252 // Convenience code for biking strobe mode
 #define SOS           251 // Convenience code for SOS mode
 
-// Temp cal mode allows temperature monitoring.  It is HUGE and really only fits 
-// on the attiny13 if you disable a few other options.  It is also broken at the moment,
-// feel free to fix it! 
+// Temp cal mode allows temperature monitoring on the attiny25/45/85.
+// Since they are not the target of this firmware, I've put less time
+// into making the temperature calibration process easy to use. Once
+// I get the attiny13 hacked into temperature measurement, I'll make
+// calibration more intuitive. 
 //
 // TODO: Measure temperature on attiny13a using datasheet spec for 
 // WDT Frequency compared to CPU clock.  WDT clock decreases exponentially 
 // with temperature, MCU frequency increases linearly.
 //
-//#define TEMP_CAL_MODE 250   // Convenience code for temperature calibration mode 
-
+#if (ATTINY == 85 || ATTINY == 25)
+#define TEMP_CAL_MODE 250   // Convenience code for temperature calibration mode 
+#endif
 
 // How many timer ticks before before dropping down.
 // Each timer tick is 1s, so "30" would be a 30-second stepdown.
