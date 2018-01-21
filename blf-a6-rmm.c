@@ -115,7 +115,11 @@ inline uint8_t EEPROM_read(uint16_t Address) {
 }
 
 // Write mode index to EEPROM (with wear leveling)
-void save_mode_idx(uint8_t mode_idx, uint8_t config) {  
+#if ( ATTINY == 13 || ATTINY == 25 )
+uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {  
+#elif ( ATTINY == 85 )
+uint16_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint16_t eepos) {  
+#endif
 	// Reverse the index again if we're reversed
 	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
@@ -123,10 +127,16 @@ void save_mode_idx(uint8_t mode_idx, uint8_t config) {
 	EEPROM_write(eepos, 255);         // erase old state
 	eepos = (eepos+1) & (EEPMODE - 1); // wear leveling, use next cell
 	EEPROM_write(eepos, ~mode_idx);         // save current index, flipped
+	return eepos;
 }
 
 inline uint8_t restore_mode_idx() {
 	uint8_t eep;
+#if ( ATTINY == 13 || ATTINY == 25 )
+	uint8_t eepos;
+#elif ( ATTINY == 85 )
+	uint16_t eepos;
+#endif
 	// Find the config data
 	for(eepos=0; eepos<EEPMODE; eepos++) {
 		eep = ~(EEPROM_read(eepos));
@@ -332,6 +342,12 @@ int main(void) {
 	if (maxtemp < 79) { maxtemp = 79; }
 #endif
 	
+	// Keep track of the eeprom position
+#if ( ATTINY == 13 || ATTINY == 25 )
+	uint8_t eepos = 0;
+#elif ( ATTINY == 85 )
+	uint16_t eepos = 0;
+#endif
 	// Read config values
 	uint8_t config = restore_config();
 	// Wipe the config if option 6 is 1
@@ -373,7 +389,7 @@ int main(void) {
 	}
 
 	// Save resultant index
-	save_mode_idx(mode_idx, config);
+	eepos = save_mode_idx(mode_idx, config, eepos);
 
 	// Main running loop
 	uint8_t ticks = 0;
@@ -401,7 +417,7 @@ int main(void) {
 			mode_idx = low_batt_stepdown(mode_idx);
 			// Save the index so we don't jump back to high when
 			// the user fast presses again
-			save_mode_idx(mode_idx, config);
+			eepos = save_mode_idx(mode_idx, config, eepos);
 		}
 		
 		// Config mode
@@ -486,7 +502,7 @@ int main(void) {
 				if ((output == TURBO) && (ticks > TURBO_TIMEOUT)) {
 					// step down to second-highest mode
 					mode_idx = TURBO_STEP_DOWN; 
-					save_mode_idx(mode_idx, config);
+					eepos = save_mode_idx(mode_idx, config, eepos);
 				}
 				// Regular non-hidden solid mode
 				set_output(modesNx[mode_idx], modes1x[mode_idx]);

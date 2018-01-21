@@ -118,10 +118,4 @@ void _delay_s()  // because it saves a bit of ROM space to do it this way
 	_delay_10_ms(100);
 }
 
-// Some driver-specific globals
 
-#if ( ATTINY == 13 || ATTINY == 25 )
-uint8_t eepos = 0;
-#elif ( ATTINY == 85 )
-uint16_t eepos = 0;
-#endif
