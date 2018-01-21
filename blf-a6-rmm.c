@@ -22,12 +22,12 @@
  *
  *
  * NANJG 105C Diagram
- *		   ---
- *		 -|   |- VCC
- *	 OTC -|   |- Voltage ADC
- *  Star 3 -|   |- PWM (FET)
- *	 GND -|   |- PWM (1x7135)
- *		   ---
+ *          ---
+ *        -|   |- VCC
+ *    OTC -|   |- Voltage ADC
+ * Star 3 -|   |- PWM (FET)
+ *    GND -|   |- PWM (1x7135)
+ *          ---
  *
  * FUSES
  *	  I use these fuse settings
@@ -117,10 +117,10 @@ inline uint8_t EEPROM_read(uint16_t Address) {
 // Write mode index to EEPROM (with wear leveling)
 void save_mode_idx(uint8_t mode_idx, uint8_t config) {  
 	// Reverse the index again if we're reversed
-	if (((config & MODE_DIR) == MODE_DIR) && (mode_idx < NUM_MODES)) {
+	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}	
-	EEPROM_write(eepos, 0xff);         // erase old state
+	EEPROM_write(eepos, 255);         // erase old state
 	eepos = (eepos+1) & (EEPMODE - 1); // wear leveling, use next cell
 	EEPROM_write(eepos, ~mode_idx);         // save current index, flipped
 }
@@ -130,7 +130,7 @@ inline uint8_t restore_mode_idx() {
 	// Find the config data
 	for(eepos=0; eepos<EEPMODE; eepos++) {
 		eep = ~(EEPROM_read(eepos));
-		if (eep != 0x00) {
+		if (eep) {
 			break;
 		}
 	}
@@ -187,7 +187,7 @@ void debug_byte(uint8_t byte) {
 	for ( x=0; x <= 7; x++ ) {
 		set_output(0,0);
 		_delay_10_ms(50);
-		if ((byte & (0x01 << x)) == 0 ) {
+		if ((byte & (1 << x)) == 0 ) {
 			set_output(0,15);
 		} else {
 			set_output(0,120);
@@ -199,19 +199,20 @@ void debug_byte(uint8_t byte) {
 #endif
 
 void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
-	for (; val>0; val--) {
-		set_output(brightness,0);
+	ALT_PWM_LVL = 0;
+	for (; val; val--) {
+		PWM_LVL = brightness;
 		_delay_10_ms(speed);
-		set_output(0,0);
+		PWM_LVL = 0;
 		_delay_10_ms(speed); _delay_10_ms(speed);
 	}
 }
 
 void emergency_shutdown(){
 	// Shut down, voltage is too low.
-	set_output(0,0);
 	// Power down as many components as possible
 	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	set_output(0,0);
 	sleep_mode();
 }
 #ifdef TEMP_CAL_MODE
@@ -230,7 +231,7 @@ uint8_t get_temperature() {
 #endif
 
 inline void set_lock(uint8_t config) {
-	if (locked_in != 1 && ((config & LOCK_MODE) != 0)) {
+	if (config & LOCK_MODE) {
 		_delay_10_ms(255);
 		locked_in = 1;
 	}
@@ -241,12 +242,11 @@ inline void configure_output() {
 	DDRB |= (1 << PWM_PIN);	    // enable main channel
 	DDRB |= (1 << ALT_PWM_PIN); // enable second channel
 	TCCR0A = PHASE;             // Set timer to do PWM 
-	TCCR0B = 0x01;              // pre-scaler for timer
+	TCCR0B = 1;              // pre-scaler for timer
 
 	// Charge up the capacitor by setting CAP_PIN to output
 	DDRB  |= (1 << CAP_PIN);	// Output
 	PORTB |= (1 << CAP_PIN);	// High
-
 }
 
 inline uint8_t get_cap() {
@@ -262,19 +262,18 @@ uint8_t get_bat() {
 }
 
 inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
-	if (mode_idx == MODE_CNT) {
+	if (mode_idx >= MODE_CNT) {
 		// Loop back if we've hit the end of hidden modes
 		mode_idx = 0;
-	} else if ((mode_idx < NUM_MODES) && (mode_idx > 0)) {
+	} else if (mode_idx == 0) {
+		// If we're at mode_idx 0, go to hidden modes
+		mode_idx = NUM_MODES;
+	} else if (mode_idx < NUM_MODES) {
 		// Walk backwards if we're in normal modes
 		mode_idx -= i;
-		if (mode_idx > MODE_CNT) { mode_idx = 0; };
 	} else if (mode_idx >= NUM_MODES) {
 		// Walk forward if we're in hidden modes
 		mode_idx += i;
-	} else {
-		// If we're at mode_idx 0, go to hidden modes
-		mode_idx = NUM_MODES;
 	}
 	return mode_idx;
 }
@@ -285,7 +284,7 @@ inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 		mode_idx = 0;
 	}
 	// Handle mode order reversal
-	if ((config & MODE_DIR) == MODE_DIR) {
+	if (config & MODE_DIR) {
 		// subtract 1 since mode_idx starts at 0
 		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}
@@ -337,15 +336,15 @@ int main(void) {
 	uint8_t config = restore_config();
 	// Wipe the config if option 6 is 1
 	// or config is empty (fresh flash)
-	if ((config & CONFIG_RESET) == CONFIG_RESET || config == 0) {
+	if ((config & CONFIG_RESET) || !config) {
 		config = CONFIG_DEFAULT;
 		save_config(config);
 	}
 
 	// First, get the "mode group" (increment value)
-	uint8_t i=2; // This is reused a lot, it's set to 2 for mode group 2 step augmentation
-	if ((config & MODE_GROUP) == 0) {
-		i=1;
+	uint8_t i=1; // This is reused a lot, it's set to 2 for mode group 2 step augmentation
+	if (config & MODE_GROUP) {
+		i=2;
 	}
 
 	// Read saved index
@@ -353,22 +352,22 @@ int main(void) {
 	uint8_t mode_idx = restore_mode_idx();
 
 	// Manipulate index depending on config options
-	if (cap_val < CAP_MED || (cap_val < CAP_SHORT && ((config & MED_PRESS) == 0))) {
+	if (cap_val < CAP_MED || (cap_val < CAP_SHORT && !(config & MED_PRESS))) {
 		// Long press, clear fast_presses
 		fast_presses = 0;
 		// Reset to the first mode if memory isn't set on
-		if ((config & MEMORY) == 0) {
+		if (!(config & MEMORY)) {
 			mode_idx = 0;
 		}
 		locked_in = 0;
-	} else if (locked_in != 0 && ((config & LOCK_MODE) == LOCK_MODE)) {
+	} else if (locked_in && (config & LOCK_MODE)) {
 		// Do nothing
 	} else if (cap_val < CAP_SHORT) {
 		// User did a medium press
 		mode_idx = med_press(mode_idx, config, i);
 	} else {
 		// We don't care what the value is as long as it's over 15
-		fast_presses = (fast_presses+1) & 0x1f;
+		fast_presses = (fast_presses+1) & 31;
 		// Indicates they did a short press, go to the next mode
 		mode_idx = next(mode_idx, config, i);
 	}
@@ -383,8 +382,7 @@ int main(void) {
 	while(1) {
 		voltage = get_bat();
 #ifdef TEMP_CAL_MODE
-		uint8_t temp=get_temperature();
-		// We need to switch back to the battery ADC channel after temp check
+		uint8_t temp = get_temperature();
 		if (voltage < ADC_LOW || temp >= maxtemp) {
 #else
 		if (voltage < ADC_LOW) {
@@ -401,13 +399,13 @@ int main(void) {
 			// Reset the counter
 			lowbatt_overheat_cnt = 0;
 			mode_idx = low_batt_stepdown(mode_idx);
-			// Save the location so we don't jump back to high when
+			// Save the index so we don't jump back to high when
 			// the user fast presses again
 			save_mode_idx(mode_idx, config);
 		}
 		
 		// Config mode
-		if (fast_presses > 0x0f) {  
+		if (fast_presses > 15) {  
 			_delay_s();	      // wait for user to stop fast-pressing button
 			fast_presses = 0; // exit this mode after one use
 			mode_idx = 0;     // Always exit at lowest mode index
@@ -444,7 +442,7 @@ int main(void) {
 			maxtemp = 255;
 			save_maxtemp(maxtemp);
 			_delay_10_ms(200);
-			while(1) {
+			while (1) {
 				set_output(255,0);
 				maxtemp = get_temperature();
 				save_maxtemp(maxtemp);
@@ -485,11 +483,10 @@ int main(void) {
 				}
 			default:
 				// Do some magic here to handle turbo step-down
-				if (output == TURBO) {
-					if (ticks > TURBO_TIMEOUT) {
-						mode_idx = TURBO_STEP_DOWN; // step down to second-highest mode
-						save_mode_idx(mode_idx, config);
-					}
+				if ((output == TURBO) && (ticks > TURBO_TIMEOUT)) {
+					// step down to second-highest mode
+					mode_idx = TURBO_STEP_DOWN; 
+					save_mode_idx(mode_idx, config);
 				}
 				// Regular non-hidden solid mode
 				set_output(modesNx[mode_idx], modes1x[mode_idx]);
