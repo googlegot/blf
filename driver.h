@@ -5,9 +5,7 @@
 //#include <avr/eeprom.h>
 #include <avr/sleep.h>
 //#include <avr/power.h>
-
 #include <util/delay_basic.h>
-
 
 // Choose your MCU here, or in the build script
 //#define ATTINY 13
@@ -18,16 +16,17 @@
 // (while configuring this firmware, skip this section)
 #if (ATTINY == 13)
 #define F_CPU 4800000UL
-#define EEPMODE 62
-#define EEPLEN 64
+#define EEPMODE 61
+#define EEPLEN 63
 #elif (ATTINY == 25)
 #define F_CPU 8000000UL
-#define EEPMODE 126
-#define EEPLEN 128
+#define EEPMODE 125
+#define EEPLEN 127
 #elif (ATTINY == 85)
 #define F_CPU 8000000UL
-#define EEPMODE 510
-#define EEPLEN 512
+// Saving space by limiting eeprom to 8 bit addressable space
+#define EEPMODE 253
+#define EEPLEN 255
 #else
 Hey, you need to define ATTINY.
 #endif

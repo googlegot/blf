@@ -79,11 +79,7 @@ const uint8_t voltage_blinks[] = {
 };
 
 // EEPROM_read/write taken from the datasheet
-#if ( ATTINY == 13 || ATTINY == 25 )
 void EEPROM_write(uint8_t Address, uint8_t Data) {
-#elif ( ATTINY == 85 )
-void EEPROM_write(uint16_t Address, uint8_t Data) {
-#endif
 	// Set Programming mode
 	EECR = (0<<EEPM1)|(0>>EEPM0);
 
@@ -101,11 +97,7 @@ void EEPROM_write(uint16_t Address, uint8_t Data) {
 	while(EECR & (1<<EEPE));
 }
 
-#if ( ATTINY == 13 || ATTINY == 25 )
 inline uint8_t EEPROM_read(uint8_t Address) {
-#elif ( ATTINY == 85 )
-inline uint8_t EEPROM_read(uint16_t Address) {
-#endif
 	// Set up address register
 	EEARL = Address;
 	// Start eeprom read by writing EERE
@@ -115,30 +107,22 @@ inline uint8_t EEPROM_read(uint16_t Address) {
 }
 
 // Write mode index to EEPROM (with wear leveling)
-#if ( ATTINY == 13 || ATTINY == 25 )
 uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {  
-#elif ( ATTINY == 85 )
-uint16_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint16_t eepos) {  
-#endif
 	// Reverse the index again if we're reversed
 	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}	
-	EEPROM_write(eepos, 255);         // erase old state
-	eepos = (eepos+1) & (EEPMODE - 1); // wear leveling, use next cell
+	EEPROM_write(eepos, 0xff);         // erase old state
+	eepos = ((eepos+1) & EEPMODE); // wear leveling, use next cell
 	EEPROM_write(eepos, ~mode_idx);         // save current index, flipped
 	return eepos;
 }
 
 inline uint8_t restore_mode_idx() {
 	uint8_t eep;
-#if ( ATTINY == 13 || ATTINY == 25 )
 	uint8_t eepos;
-#elif ( ATTINY == 85 )
-	uint16_t eepos;
-#endif
 	// Find the config data
-	for(eepos=0; eepos<EEPMODE; eepos++) {
+	for(eepos=0; eepos<=EEPMODE; eepos++) {
 		eep = ~(EEPROM_read(eepos));
 		if (eep) {
 			break;
@@ -150,20 +134,20 @@ inline uint8_t restore_mode_idx() {
 #ifdef TEMP_CAL_MODE
 void save_maxtemp(uint8_t maxtemp){
 	// Save both the max temperature and config
-	EEPROM_write((EEPLEN - 2), maxtemp);
+	EEPROM_write((EEPLEN - 1), maxtemp);
 }
 
 inline uint8_t restore_maxtemp(){
-	return EEPROM_read((EEPLEN - 2));
+	return EEPROM_read((EEPLEN - 1));
 }
 #endif
 
 void save_config(uint8_t config) {
-	EEPROM_write((EEPLEN - 1), ~config);
+	EEPROM_write(EEPLEN, ~config);
 }
 
 inline uint8_t restore_config() {
-	return ~EEPROM_read((EEPLEN - 1));
+	return ~EEPROM_read(EEPLEN);
 }
 
 inline void ADC_on(uint8_t dpin, uint8_t channel) {
@@ -189,25 +173,24 @@ inline void set_output(uint8_t pwm1, uint8_t pwm2) {
 	PWM_LVL = pwm1;
 	ALT_PWM_LVL = pwm2;
 }
-
 #ifdef DEBUG
 // Blink out the contents of a byte
 void debug_byte(uint8_t byte) {
-	uint8_t x;
-	for ( x=0; x <= 7; x++ ) {
+	uint8_t x=0;
+	for (; x <= 7; x++ ) {
 		set_output(0,0);
 		_delay_10_ms(50);
-		if ((byte & (1 << x)) == 0 ) {
-			set_output(0,15);
+		if (byte & (1 << (7 - x))) {
+			set_output(0,200);
 		} else {
-			set_output(0,120);
+			set_output(0,10);
 		}
 		_delay_10_ms(10);
 	}
 	set_output(0,0);
+	_delay_s();
 }
 #endif
-
 void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
 	ALT_PWM_LVL = 0;
 	for (; val; val--) {
@@ -283,7 +266,7 @@ inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 		mode_idx -= i;
 	} else if (mode_idx >= NUM_MODES) {
 		// Walk forward if we're in hidden modes
-		mode_idx += i;
+		mode_idx += 1;
 	}
 	return mode_idx;
 }
@@ -343,11 +326,7 @@ int main(void) {
 #endif
 	
 	// Keep track of the eeprom position
-#if ( ATTINY == 13 || ATTINY == 25 )
 	uint8_t eepos = 0;
-#elif ( ATTINY == 85 )
-	uint16_t eepos = 0;
-#endif
 	// Read config values
 	uint8_t config = restore_config();
 	// Wipe the config if option 6 is 1
@@ -383,7 +362,7 @@ int main(void) {
 		mode_idx = med_press(mode_idx, config, i);
 	} else {
 		// We don't care what the value is as long as it's over 15
-		fast_presses = (fast_presses+1) & 31;
+		fast_presses = (fast_presses+1) & 0x1f;
 		// Indicates they did a short press, go to the next mode
 		mode_idx = next(mode_idx, config, i);
 	}
@@ -421,7 +400,7 @@ int main(void) {
 		}
 		
 		// Config mode
-		if (fast_presses > 15) {  
+		if (fast_presses > 0x0f) {  
 			_delay_s();	      // wait for user to stop fast-pressing button
 			fast_presses = 0; // exit this mode after one use
 			mode_idx = 0;     // Always exit at lowest mode index
