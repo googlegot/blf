@@ -114,40 +114,36 @@ inline uint8_t EEPROM_read(uint16_t Address) {
 	return EEDR;
 }
 
-void save_mode_idx(uint8_t idx, uint8_t config) {  // Write mode index to EEPROM (with wear leveling)
-#if ( ATTINY == 13 || ATTINY == 25 )
-	uint8_t oldpos=eepos;
-#elif ( ATTINY == 85 )
-	uint16_t oldpos=eepos;
-#endif
+// Write mode index to EEPROM (with wear leveling)
+void save_mode_idx(uint8_t mode_idx, uint8_t config) {  
 	// Reverse the index again if we're reversed
-	if (((config & MODE_DIR) == MODE_DIR) && (idx < NUM_MODES)) {
-		idx = (NUM_MODES - 1 - idx);
+	if (((config & MODE_DIR) == MODE_DIR) && (mode_idx < NUM_MODES)) {
+		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}	
+	EEPROM_write(eepos, 0xff);         // erase old state
 	eepos = (eepos+1) & (EEPMODE - 1); // wear leveling, use next cell
-	EEPROM_write(eepos, ~idx);         // save current index, flipped
-	EEPROM_write(oldpos, 0xff);        // erase old state
+	EEPROM_write(eepos, ~mode_idx);         // save current index, flipped
 }
 
 inline uint8_t restore_mode_idx() {
 	uint8_t eep;
-	// find the config data
+	// Find the config data
 	for(eepos=0; eepos<EEPMODE; eepos++) {
 		eep = ~(EEPROM_read(eepos));
 		if (eep != 0x00) {
-			return eep;
+			break;
 		}
 	}
-	return 0;
+	return eep;
 }
 
 #ifdef TEMP_CAL_MODE
-void save_temp(uint8_t maxtemp){
+void save_maxtemp(uint8_t maxtemp){
 	// Save both the max temperature and config
 	EEPROM_write((EEPLEN - 2), maxtemp);
 }
 
-inline uint8_t restore_temp(){
+inline uint8_t restore_maxtemp(){
 	return EEPROM_read((EEPLEN - 2));
 }
 #endif
@@ -235,7 +231,7 @@ uint8_t get_temperature() {
 
 inline void set_lock(uint8_t config) {
 	if (locked_in != 1 && ((config & LOCK_MODE) != 0)) {
-		_delay_s(); _delay_s(); _delay_s();
+		_delay_10_ms(255);
 		locked_in = 1;
 	}
 }
@@ -296,6 +292,22 @@ inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	return mode_idx;
 }
 
+inline uint8_t low_batt_stepdown(uint8_t mode_idx) {
+	// Start off by dropping out of hidden modes to
+	// TURBO_STEP_DOWN
+	if (mode_idx > TURBO_STEP_DOWN) {
+		mode_idx = TURBO_STEP_DOWN;
+	} else {
+		mode_idx--;
+	}
+	
+	if (mode_idx == 0) {
+		// If we're already at 0, save state at low and turn off
+		emergency_shutdown();
+	}
+	return mode_idx;
+}
+
 int main(void) {
 	// Read the off-time cap *first* to get the most accurate reading
 	uint8_t cap_val = get_cap(); // save this for later
@@ -318,14 +330,14 @@ int main(void) {
 
 #ifdef TEMP_CAL_MODE
 	uint8_t maxtemp = restore_maxtemp();
-	if (maxtemp == 0) { maxtemp = 79; }
+	if (maxtemp < 79) { maxtemp = 79; }
 #endif
 	
 	// Read config values
 	uint8_t config = restore_config();
 	// Wipe the config if option 6 is 1
 	// or config is empty (fresh flash)
-	if ((config & CONFIGMAX) == CONFIGMAX || config == 0) {
+	if ((config & CONFIG_RESET) == CONFIG_RESET || config == 0) {
 		config = CONFIG_DEFAULT;
 		save_config(config);
 	}
@@ -337,7 +349,9 @@ int main(void) {
 	}
 
 	// Read saved index
+	// mode_idx is the position in the mode arrays to set the output to
 	uint8_t mode_idx = restore_mode_idx();
+
 	// Manipulate index depending on config options
 	if (cap_val < CAP_MED || (cap_val < CAP_SHORT && ((config & MED_PRESS) == 0))) {
 		// Long press, clear fast_presses
@@ -357,9 +371,9 @@ int main(void) {
 		fast_presses = (fast_presses+1) & 0x1f;
 		// Indicates they did a short press, go to the next mode
 		mode_idx = next(mode_idx, config, i);
- 
 	}
 
+	// Save resultant index
 	save_mode_idx(mode_idx, config);
 
 	// Main running loop
@@ -367,13 +381,12 @@ int main(void) {
 	uint8_t lowbatt_overheat_cnt = 0;
 
 	while(1) {
+		voltage = get_bat();
 #ifdef TEMP_CAL_MODE
 		uint8_t temp=get_temperature();
 		// We need to switch back to the battery ADC channel after temp check
-		voltage = get_bat();
 		if (voltage < ADC_LOW || temp >= maxtemp) {
 #else
-		voltage = get_bat();
 		if (voltage < ADC_LOW) {
 #endif
 			lowbatt_overheat_cnt ++;
@@ -381,33 +394,24 @@ int main(void) {
 			lowbatt_overheat_cnt = 0;
 		}
 
-		// See if it's been low for a while, and maybe step down
+		// See if the battery has been low for a while
+		// or the temperature has been high for a while
+		// and step down if so.
 		if (lowbatt_overheat_cnt >= 8) {
-			// Skip FET and blinky modes if they're in the normal mode rotation
-			for (i = mode_idx; i >= NUM_MODES || modesNx[i] > 0; i--){}
-
-			if (i == 0) {
-				// If we're already at 0, save state at low and turn off
-				emergency_shutdown();
-			}
-
-			// Fet is inactive, we're not in a hidden mode, drop down a level
-			i--;
-			mode_idx = i;
-			save_mode_idx(i, config);
+			// Reset the counter
 			lowbatt_overheat_cnt = 0;
+			mode_idx = low_batt_stepdown(mode_idx);
+			// Save the location so we don't jump back to high when
+			// the user fast presses again
+			save_mode_idx(mode_idx, config);
 		}
 		
-		uint8_t output = modesNx[mode_idx];
-	
-		if (fast_presses > 0x0f) {  // Config mode
-			_delay_s();	   // wait for user to stop fast-pressing button
+		// Config mode
+		if (fast_presses > 0x0f) {  
+			_delay_s();	      // wait for user to stop fast-pressing button
 			fast_presses = 0; // exit this mode after one use
-			mode_idx = 0;
-#ifdef TEMP_CAL_MODE
-			// Wait through all config options to enter temperature calibration mode.
-			output = TEMP_CAL_MODE;
-#endif
+			mode_idx = 0;     // Always exit at lowest mode index
+			
 			// Loop through each config option, toggle, blink the mode number,
 			// buzz a second for user to confirm, toggle back.
 			//
@@ -423,20 +427,35 @@ int main(void) {
 			// linear, so 1 blink for Mode Group,
 			// 3 blinks for Reverse Mode Order,
 			// 4 blinks for Medium Press.
-
+			
 			uint8_t blinks=1;
-			for (i=1; i<=CONFIGMAX; i<<=1, blinks++) {
+			for (i=1; i<=CONFIG_RESET; i<<=1, blinks++) {
 				blink(blinks, 12, 30);
 				_delay_10_ms(50);
-				config ^= i;
-				save_config(config);
+				save_config(config ^= i);
 				blink(48, 1, 20);
-				config ^= i;
-				save_config(config);
+				save_config(config ^= i);
 				_delay_s();
 			}
+
+#ifdef TEMP_CAL_MODE
+			// Enter Temperature Calibration Mode
+			blink(7, 12, 30);
+			maxtemp = 255;
+			save_maxtemp(maxtemp);
+			_delay_10_ms(200);
+			while(1) {
+				set_output(255,0);
+				maxtemp = get_temperature();
+				save_maxtemp(maxtemp);
+				_delay_s();
+				// Blink twice every second to indicate calibration mode
+				blink(2, 12, 255);
+			}
+#endif
 		}
 
+		uint8_t output = modesNx[mode_idx];
 		switch (output) {
 			case SOS:
 				blink(3,10,255);
@@ -445,20 +464,7 @@ int main(void) {
 				blink(3,10,255);
 				_delay_s();
 				break;
-#ifdef TEMP_CAL_MODE
-			case TEMP_CAL_MODE:
-				blink(5, 12, 30);
-				maxtemp = 255;
-				save_config(config);
-				_delay_s(); _delay_s();
-				set_output(255,0);
-				while(1) {
-					maxtemp = get_temperature();
-					save_config(config);
-					_delay_s();
-				}
-				break;
-#endif
+
 			case BATTCHECK:
 				// figure out how many times to blink
 				for (i=0; voltage > voltage_blinks[i]; i++) {}
@@ -480,9 +486,8 @@ int main(void) {
 			default:
 				// Do some magic here to handle turbo step-down
 				if (output == TURBO) {
-					ticks++;
 					if (ticks > TURBO_TIMEOUT) {
-						mode_idx = NUM_MODES - 2; // step down to second-highest mode
+						mode_idx = TURBO_STEP_DOWN; // step down to second-highest mode
 						save_mode_idx(mode_idx, config);
 					}
 				}
@@ -494,6 +499,7 @@ int main(void) {
 		}
 		// If we got this far, the user has stopped fast-pressing.
 		// So, don't enter config mode.
+		ticks++;
 		fast_presses = 0;
 	}
 }

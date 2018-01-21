@@ -32,10 +32,12 @@
 // Each timer tick is 1s, so "30" would be a 30-second stepdown.
 // Max value of 255 unless you change "ticks"
 #define TURBO_TIMEOUT 20 
+// Turbo step down mode index
+#define TURBO_STEP_DOWN (NUM_MODES - 2)
 
 #define MODE_CNT (NUM_MODES + NUM_HIDDEN - 1) // Subtract 1 since mode_idx starts at 0
 
-// modes (gets set when the light starts up based on saved config values)
+// Modes
 const uint8_t modesNx[] = { MODESNx1, HIDDENMODES };
 const uint8_t modes1x[] = { MODES1x1, HIDDENMODES_ALT };
 
@@ -45,21 +47,10 @@ const uint8_t modes1x[] = { MODES1x1, HIDDENMODES_ALT };
 #define MEMORY     2
 #define MODE_DIR   4
 #define MED_PRESS  8
-#define CONFIG_SET 128
-// Lock mode disables moving to another mode after 3 seconds of being in that mode.
-// To exit the mode, turn the flashlight off for 3 seconds, and it will either start
-// from the beginning or continue where you left off depending on whether mode memory
-// is enabled.
-//
-// Comment out the next line to disable this function.
 #define LOCK_MODE 16
+#define CONFIG_RESET 32 // MUST always be the last user-configurable mode
+#define CONFIG_SET 128
 
 // Set the bit value of the config mode you'd like when starting fresh,
 // or when the config is wiped
-#define CONFIG_DEFAULT (CONFIG_SET + MODE_GROUP) // Medium press enabled by default
-
-#ifdef LOCK_MODE
-#define CONFIGMAX 32
-#else
-#define CONFIGMAX 16
-#endif
+#define CONFIG_DEFAULT (CONFIG_SET + MODE_GROUP) // 4 modes default
