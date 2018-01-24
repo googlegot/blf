@@ -1,0 +1,90 @@
+################################################################
+#+------------------------------------------------------------+#
+#|  _____ _           _     _               _____ _           |#  
+#| |  ___| | __ _ ___| |__ (_)_ __   __ _  |_   _| |__   ___  |# 
+#| | |_  | |/ _` / __| '_ \| | '_ \ / _` |   | | | '_ \ / _ \ |# 
+#| |  _| | | (_| \__ \ | | | | | | | (_| |   | | | | | |  __/ |# 
+#| |_|   |_|\__,_|___/_| |_|_|_| |_|\__, |   |_| |_| |_|\___| |# 
+#|                                  |___/                     |# 
+#|            ____  _     _____       _    __                 |# 
+#|           | __ )| |   |  ___|     / \  / /_                |# 
+#|           |  _ \| |   | |_ _____ / _ \| '_ \               |# 
+#|           | |_) | |___|  _|_____/ ___ \ (_) |              |# 
+#|           |____/|_____|_|      /_/   \_\___/               |# 
+#+------------------------------------------------------------+#
+################################################################
+
+#-------#
+# Parts #
+#-------#
+
+1x BLF-A6/BLF-x6/MTN-17DDm/FET+7135 driver w/off-time cap
+1x USBASP
+1x SOIC8 test clip
+6x Female/Female jumper wire
+1x Linux box
+
+#----------#
+# Software #
+#----------#
+
+- Modern linux operating system
+- avrdude (in most major distro repos)
+
+#-----------#
+# Procedure #
+#-----------#
+
+Following the pinout below, connect your test clip to the USBASP:
+
+#------------------------------#
+#           Pinout             #
+#------------------------------#
+#                              #
+#        +-----+               #
+# RESET -|1 M 8|- VCC (3.3/5v) #
+#   N/C -|2 C 7|- SCK          #
+#   N/C -|3 U 6|- MISO         #
+#   GND -|4   8|- MOSI         #
+#        +-----+               #
+#                              #
+#------------------------------#
+
+Next, connect the test clip to the MCU (the 8-pin chip on the driver) with the not connected (N/C) facing away from the FET.
+
+Next up, flashing it!
+
+#----------#
+# Flashing #
+#----------#
+
+Select the proper firmware, and flash your board with flash.sh!
+
+  +-----------------------------------------------------------------------------+
+  | user@linuxbox:~/blf$ ./flash.sh blf-a6-rmm-attiny13a.elf attiny13           |
+  +-----------------------------------------------------------------------------+
+
+#-----------------#
+# Troubleshooting #
+#-----------------#
+
+If you have any errors, try the following steps:
+
+1. Verify you have clipped directly onto the MCU leads
+
+  - This can be difficult to do, but be patient.  I haven't killed one yet, but misaligning it can cause a short circuit.
+
+2. Verify your USBASP is wired correctly.
+
+3. Try flashing at 5v
+
+  - These MCUs are 5v tolerant, and I've found supplying 5v is more reliable when 3.3v just won't work.
+  - Note some USBASP flashers require desoldering and jumping resistor pads to provide 5v.
+
+4. Reflow the pins on the MCU.
+
+  - Using a soldering iron around 350c, touch each pin of the MCU for about a half second
+
+5. Pour yourself a drink.
+
+  - Some boards just don't flash.  I have no clue why.  I have yet to try a real programmer on those, though.
