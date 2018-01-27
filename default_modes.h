@@ -7,15 +7,16 @@
 #define MODES1x1    3,20,110,255,255,255,255,0 //(1x7135)
 
 // Hidden modes are *after* the normal modes
-#define NUM_HIDDEN       5
-#define HIDDENMODES      BATTCHECK,TURBO,STROBE,BIKING_STROBE,SOS
-#define HIDDENMODES_ALT  0,0,0,0,0   // Zeroes, same length as NUM_HIDDEN
+#define NUM_HIDDEN       6
+#define HIDDENMODES      BATTCHECK,TURBO,STROBE,BIKING_STROBE,SOS,BEACON
+#define HIDDENMODES_ALT  0,0,0,0,0,0   // Zeroes, same length as NUM_HIDDEN
 
 #define TURBO         255 // Convenience code for turbo mode
 #define BATTCHECK     254 // Convenience code for battery check mode
 #define STROBE        253 // Convenience code for strobe mode
 #define BIKING_STROBE 252 // Convenience code for biking strobe mode
 #define SOS           251 // Convenience code for SOS mode
+#define BEACON        250 // Convenience code for beacon mode
 
 // Temp cal mode allows temperature monitoring on the attiny25/45/85.
 // Since they are not the target of this firmware, I've put less time
@@ -28,7 +29,7 @@
 // with temperature, MCU frequency increases linearly.
 //
 #if (ATTINY == 85 || ATTINY == 25)
-#define TEMP_CAL_MODE 250   // Convenience code for temperature calibration mode 
+#define TEMP_CAL_MODE 1   // Convenience code for temperature calibration mode 
 #endif
 
 // How many timer ticks before before dropping down.
@@ -46,14 +47,15 @@ const uint8_t modes1x[] = { MODES1x1, HIDDENMODES_ALT };
 
 // config / state variables
 // config bitfield
-#define MODE_GROUP 1
-#define MEMORY     2
-#define MODE_DIR   4
-#define MED_PRESS  8
-#define LOCK_MODE 16
-#define CONFIG_RESET 32 // MUST always be the last user-configurable mode
-#define CONFIG_SET 128
+#define MUGGLE       1   // Muggle mode (max two steps below turbo, no medium press)
+#define MEMORY       2   // Memory on or off
+#define MOON_MODE    4   // When set, disable moon mode
+#define MODE_DIR     8   // Mode order reversal
+#define MODE_GROUP   16  // Mode group
+#define MED_PRESS    32  // Disable medium press
+#define LOCK_MODE    64  // "Lock in" to mode after 3 seconds
+#define CONFIG_SET   128 // if 0, set CONFIG_DEFAULT MUST always be the last user-configurable mode
 
 // Set the bit value of the config mode you'd like when starting fresh,
 // or when the config is wiped
-#define CONFIG_DEFAULT (CONFIG_SET + MODE_GROUP) // 4 modes default
+#define CONFIG_DEFAULT (CONFIG_SET + MODE_GROUP + MOON_MODE) // 4 modes default

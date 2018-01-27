@@ -257,8 +257,8 @@ uint8_t get_bat() {
 inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	if (mode_idx >= MODE_CNT) {
 		// Loop back if we've hit the end of hidden modes
-		mode_idx = 0;
-	} else if (mode_idx == 0) {
+		mode_idx = (config & MOON_MODE);
+	} else if (mode_idx == (config & MOON_MODE)) {
 		// If we're at mode_idx 0, go to hidden modes
 		mode_idx = NUM_MODES;
 	} else if (mode_idx < NUM_MODES) {
@@ -274,7 +274,7 @@ inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	mode_idx += i;
 	if (mode_idx >= NUM_MODES) {
-		mode_idx = 0;
+		mode_idx = (config & MOON_MODE);
 	}
 	// Handle mode order reversal
 	if (config & MODE_DIR) {
@@ -329,9 +329,9 @@ int main(void) {
 	uint8_t eepos = 0;
 	// Read config values
 	uint8_t config = restore_config();
-	// Wipe the config if option 6 is 1
+	// Wipe the config if CONFIG_SET is set
 	// or config is empty (fresh flash)
-	if ((config & CONFIG_RESET) || !config) {
+	if (!(config & CONFIG_SET)) {
 		config = CONFIG_DEFAULT;
 		save_config(config);
 	}
@@ -352,12 +352,12 @@ int main(void) {
 		fast_presses = 0;
 		// Reset to the first mode if memory isn't set on
 		if (!(config & MEMORY)) {
-			mode_idx = 0;
+			mode_idx = (config & MOON_MODE);
 		}
 		locked_in = 0;
 	} else if (locked_in && (config & LOCK_MODE)) {
 		// Do nothing
-	} else if (cap_val < CAP_SHORT) {
+	} else if ((cap_val < CAP_SHORT) && !(config & MUGGLE)) {
 		// User did a medium press
 		mode_idx = med_press(mode_idx, config, i);
 	} else {
@@ -365,6 +365,13 @@ int main(void) {
 		fast_presses = (fast_presses+1) & 0x1f;
 		// Indicates they did a short press, go to the next mode
 		mode_idx = next(mode_idx, config, i);
+	}
+
+	if (config & MUGGLE) {
+		// Is the user a muggle? No turbo or medium press for you.
+		if (mode_idx > (NUM_MODES - 3)) {
+			mode_idx = (NUM_MODES - 3);
+		} 
 	}
 
 	// Save resultant index
@@ -403,18 +410,20 @@ int main(void) {
 		if (fast_presses > 0x0f) {  
 			_delay_s();	      // wait for user to stop fast-pressing button
 			fast_presses = 0; // exit this mode after one use
-			mode_idx = 0;     // Always exit at lowest mode index
+			mode_idx = (config & MOON_MODE);     // Always exit at lowest mode index
 			
 			// Loop through each config option, toggle, blink the mode number,
 			// buzz a second for user to confirm, toggle back.
 			//
 			// Config items:
 			//
-			// 1 = Mode Group
-			// 2 = Mode Memory
-			// 4 = Reverse Mode Order
-			// 8 = Medium Press Disable
+			// 1  = Mode Group
+			// 2  = Mode Memory
+			// 4  = Reverse Mode Order
+			// 8  = Medium Press Disable
 			// 16 = Mode Locking
+			// 32 = Moon Mode disable
+			// 64 = Reset configuration
 			//
 			// Each toggle's blink count will be
 			// linear, so 1 blink for Mode Group,
@@ -422,7 +431,7 @@ int main(void) {
 			// 4 blinks for Medium Press.
 			
 			uint8_t blinks=1;
-			for (i=1; i<=CONFIG_RESET; i<<=1, blinks++) {
+			for (i=1; i<=CONFIG_SET; i<<=1, blinks++) {
 				blink(blinks, 12, 30);
 				_delay_10_ms(5);
 				save_config(config ^= i);
@@ -433,7 +442,7 @@ int main(void) {
 
 #ifdef TEMP_CAL_MODE
 			// Enter Temperature Calibration Mode
-			blink(7, 12, 30);
+			blink(8, 12, 30);
 			maxtemp = 255;
 			save_maxtemp(maxtemp);
 			_delay_10_ms(200);
@@ -467,6 +476,10 @@ int main(void) {
 				// wait between readouts
 				_delay_s();
 				break;
+
+			case BEACON:
+				blink(1, 10, 255);
+				_delay_10_ms(255);
 
 			case STROBE:
 			case BIKING_STROBE:

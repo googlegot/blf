@@ -6,12 +6,7 @@ iname=$1
 mcu=$2
 oname="${iname}-${mcu}"
 
-if [ "${mcu}" == "attiny13" ]; then
-    mcuvar='13'
-elif [ "${mcu}" == "attiny25" ]; then
-    mcuvar='25'
-elif [ "${mcu}" == "attiny85" ]; then
-    mcuvar='85'
-fi
+mcuvar=$(echo ${mcu} | egrep -o '[0-9]{1,3}')
+
 avr-gcc -Wall -Os -mmcu=${mcu} -D ATTINY=${mcuvar} -o ${oname}.elf ${iname}.c && avr-size -C ${oname}.elf
 avr-objcopy -j .text -j .data -O ihex ${oname}.elf ${oname}.hex
