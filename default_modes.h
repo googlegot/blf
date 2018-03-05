@@ -6,6 +6,9 @@
 #define MODESNx1    0,0,0,7,56,90,137,255      //(FET or Nx7135)
 #define MODES1x1    3,20,110,255,255,255,255,0 //(1x7135)
 
+#define MODE1INC 1
+#define MODE2INC 2
+
 // Hidden modes are *after* the normal modes
 #define NUM_HIDDEN       6
 #define HIDDENMODES      BATTCHECK,TURBO,STROBE,BIKING_STROBE,SOS,BEACON
@@ -58,4 +61,5 @@ const uint8_t modes1x[] = { MODES1x1, HIDDENMODES_ALT };
 
 // Set the bit value of the config mode you'd like when starting fresh,
 // or when the config is wiped
-#define CONFIG_DEFAULT (CONFIG_SET + MODE_GROUP + MOON_MODE) // 4 modes default
+#define CONFIG_DEFAULT (CONFIG_SET + MODE_GROUP) // 4 modes default
+

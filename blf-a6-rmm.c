@@ -337,15 +337,14 @@ int main(void) {
 	}
 
 	// First, get the "mode group" (increment value)
-	uint8_t i=1; // This is reused a lot, it's set to 2 for mode group 2 step augmentation
+	uint8_t i=MODE1INC; // This is reused a lot, it's set to 2 for mode group 2 step augmentation
 	if (config & MODE_GROUP) {
-		i=2;
+		i=MODE2INC;
 	}
 
 	// Read saved index
 	// mode_idx is the position in the mode arrays to set the output to
 	uint8_t mode_idx = restore_mode_idx();
-
 	// Manipulate index depending on config options
 	if (cap_val < CAP_MED || (cap_val < CAP_SHORT && !(config & MED_PRESS))) {
 		// Long press, clear fast_presses

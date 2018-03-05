@@ -70,7 +70,6 @@ Hey, you need to define ATTINY.
 #define ADC_CRIT        109 // When do we shut the light off (2.7V)
 
 #define TEMP_CHANNEL 0x0f
-//#define TEMP_DIDR   ADC4D 
 
 // the BLF EE A6 driver may have different offtime cap values than most other drivers
 // Values are between 1 and 255, and can be measured with offtime-cap.c
@@ -96,12 +95,12 @@ Hey, you need to define ATTINY.
  */
 
 
-//void _delay_ms(uint16_t n)
-//{
-//    // TODO: make this take tenths of a ms instead of ms,
-//    // for more precise timing?
-//    while(n-- > 0) _delay_loop_2(DELAY_TWEAK);
-//}
+void _delay_ms(uint8_t n)
+{
+    // TODO: make this take tenths of a ms instead of ms,
+    // for more precise timing?
+    while(n-- > 0) _delay_loop_2(DELAY_TWEAK);
+}
 //void _delay_s()  // because it saves a bit of ROM space to do it this way
 //{
 //	_delay_ms(1000);
