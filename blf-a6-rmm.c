@@ -63,14 +63,13 @@
 #include "driver.h"
 #include "default_modes.h"
 
-// counter for entering config mode
-// (needs to be remembered while off, but only for up to half a second)
-uint8_t fast_presses __attribute__ ((section (".noinit")));
-// LOCK_MODE variable
-uint8_t locked_in  __attribute__ ((section (".noinit")));
+// Volatile globals
+uint8_t fast_presses __attribute__ ((section (".noinit"))); // counter for entering config mode
+uint8_t locked_in  __attribute__ ((section (".noinit")));   // LOCK_MODE variable
 
+// Constant globals
 const uint8_t voltage_blinks[] = {
-	ADC_0,	// 1 blink  for 0%-25%
+	ADC_0,    // 1 blink  for 0%-25%
 	ADC_25,   // 2 blinks for 25%-50%
 	ADC_50,   // 3 blinks for 50%-75%
 	ADC_75,   // 4 blinks for 75%-100%
@@ -102,15 +101,20 @@ inline void EEPROM_erase(uint8_t address) {
 	while(EECR & (1<<EEPE));      // Wait for write completion (see line 96 for more details)
 }
 
-// Write mode index to EEPROM (with wear leveling)
-uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {  
+inline uint8_t reverse_idx(uint8_t config, uint8_t mode_idx) {
 	// Reverse the index again if we're reversed
 	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
-	}	
-	EEPROM_erase(eepos);            // Erase the previous position
-	eepos = ((eepos+1) & EEPMODE);  // wear leveling, use next cell, limited by ANDing in EEPMODE, the maximum eeprom address for mode index storage
-	EEPROM_write(eepos, ~mode_idx); // save current index, flipped because empty bits are 0xFF.  This allows for storing index 0.
+	}
+	return mode_idx;
+}
+
+// Write mode index to EEPROM (with wear leveling)
+uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {  
+	mode_idx = reverse_idx(config, mode_idx); // Reverse the mode index if needed
+	EEPROM_erase(eepos);              // Erase the previous position
+	eepos = ((eepos+1) & EEPMODE);    // wear leveling, use next cell, limited by ANDing in EEPMODE, the maximum eeprom address for mode index storage
+	EEPROM_write(eepos, ~mode_idx);   // save current index, flipped because empty bits are 0xFF.  This allows for storing index 0.
 	return eepos;
 }
 
@@ -266,14 +270,13 @@ inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 
 inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	mode_idx += i;
+	
 	if (mode_idx >= NUM_MODES) {
 		mode_idx = (config & MOON_MODE);
 	}
-	// Handle mode order reversal
-	if (config & MODE_DIR) {
-		// subtract 1 since mode_idx starts at 0
-		mode_idx = (NUM_MODES - 1 - mode_idx);
-	}
+	
+	mode_idx = reverse_idx(config, mode_idx); // Reverse the index if needed
+	
 	return mode_idx;
 }
 
