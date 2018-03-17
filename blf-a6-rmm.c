@@ -102,7 +102,7 @@ inline void EEPROM_erase(uint8_t address) {
 }
 
 inline uint8_t reverse_idx(uint8_t config, uint8_t mode_idx) {
-	// Reverse the index again if we're reversed
+	// Reverse the index if the config option is set and the index is in normal modes 
 	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}
@@ -118,9 +118,8 @@ uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {
 	return eepos;
 }
 
-inline uint8_t restore_mode_idx() {
+inline uint8_t restore_mode_idx(uint8_t eepos) {
 	uint8_t eep;
-	uint8_t eepos;
 	// Find the config data
 	for(eepos=0; eepos<=EEPMODE; eepos++) {
 		eep = ~(EEPROM_read(eepos));
@@ -144,10 +143,6 @@ inline uint8_t restore_maxtemp(){
 
 void save_config(uint8_t config) {
 	EEPROM_write(EEPLEN, ~config);
-}
-
-inline uint8_t restore_config() {
-	return ~EEPROM_read(EEPLEN);
 }
 
 inline void ADC_on(uint8_t dpin, uint8_t channel) {
@@ -281,18 +276,14 @@ inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 }
 
 inline uint8_t low_batt_stepdown(uint8_t mode_idx) {
-	// Start off by dropping out of hidden modes to
-	// TURBO_STEP_DOWN
-	if (mode_idx > TURBO_STEP_DOWN) {
+	if (mode_idx == 0) emergency_shutdown(); // If we're already at 0, save state at low and turn off
+	
+	if (mode_idx > TURBO_STEP_DOWN) {  // Drop out of hidden modes to TURBO_STEP_DOWN
 		mode_idx = TURBO_STEP_DOWN;
-	} else {
+	} else {                           // If we're below TURBO_STEP_DOWN, then reduce the mode index again.
 		mode_idx--;
 	}
-	
-	if (mode_idx == 0) {
-		// If we're already at 0, save state at low and turn off
-		emergency_shutdown();
-	}
+
 	return mode_idx;
 }
 
@@ -324,7 +315,7 @@ int main(void) {
 	// Keep track of the eeprom position
 	uint8_t eepos = 0;
 	// Read config values
-	uint8_t config = restore_config();
+	uint8_t config = ~EEPROM_read(EEPLEN);
 	// Wipe the config if CONFIG_SET is set
 	// or config is empty (fresh flash)
 	if (!(config & CONFIG_SET)) {
@@ -340,7 +331,7 @@ int main(void) {
 
 	// Read saved index
 	// mode_idx is the position in the mode arrays to set the output to
-	uint8_t mode_idx = restore_mode_idx();
+	uint8_t mode_idx = restore_mode_idx(eepos);
 	// Manipulate index depending on config options
 	if (cap_val < CAP_MED || (cap_val < CAP_SHORT && !(config & MED_PRESS))) {
 		// Long press, clear fast_presses
@@ -475,19 +466,18 @@ int main(void) {
 			case BEACON:
 				blink(1, 10, 255);
 				_delay_10_ms(255);
+				break;
 
 			case STROBE:
 			case BIKING_STROBE:
 				// 10Hz strobe
 				blink(4, 2, 255);
 				// Break here for strobe
-				if (output == STROBE) {
-					break;
-				}
+				if (output == STROBE) break;
 			default:
 				// Do some magic here to handle turbo step-down
 				if ((output == TURBO) && (ticks > TURBO_TIMEOUT)) {
-					// step down to second-highest mode
+					// step down to TURBO_STEP_DOWN
 					mode_idx = TURBO_STEP_DOWN; 
 					eepos = save_mode_idx(mode_idx, config, eepos);
 				}
