@@ -79,31 +79,27 @@ const uint8_t voltage_blinks[] = {
 };
 
 // EEPROM_read/write taken from the datasheet
-void EEPROM_write(uint8_t Address, uint8_t Data) {
-	// Set Programming mode
-	EECR = (0<<EEPM1)|(0>>EEPM0);
-
-	// Set up address and data registers
-	EEARL = Address;
-	EEDR = Data;
-
-	// Write logical one to EEMPE
-	EECR |= (1<<EEMPE);
-
-	// Start eeprom write by setting EEPE
-	EECR |= (1<<EEPE);
-	
-	// Wait for completion of write
-	while(EECR & (1<<EEPE));
+void EEPROM_write(uint8_t address, uint8_t data) {
+	EECR = (0<<EEPM1)|(0<<EEPM0); // Atomic write mode, EEPM0:1 value 0b00
+	EEAR = address;               // Set EEAR (eeprom address register) to the eeprom address to perform the operation on
+	EEDR = data;                  // Set EEDR (eeprom data register) to the data to be written
+	EECR |= (1<<EEMPE);	          // Write logical one to EEMPE (eeprom master program enable)
+	EECR |= (1<<EEPE);            // Start eeprom write by setting EEPE (eeprom program enable)
+	while(EECR & (1<<EEPE));      // Wait for completion of write (the EEPE bit in EECR (eeprom control register) will stay set until eeprom read completes)
 }
 
-inline uint8_t EEPROM_read(uint8_t Address) {
-	// Set up address register
-	EEARL = Address;
-	// Start eeprom read by writing EERE
-	EECR |= (1<<EERE);
-	// Return data from data register
-	return EEDR;
+inline uint8_t EEPROM_read(uint8_t address) {
+	EEAR = address;               // Set EEAR (eeprom address register) to the eeprom address to perform the operation on 
+	EECR |= (1<<EERE);            // Start eeprom read by ORing 1 into EERE (eeprom read enable) in the EECR (eeprom control register)
+	return EEDR;                  // Return data from EEDR (eeprom data register)
+}
+
+inline void EEPROM_erase(uint8_t address) {
+	EEAR = address;               // Set EEAR (eeprom address register) to the eeprom address to perform the operation on
+	EECR = (0<<EEPM1)|(1<<EEPM0); // Set EECR (eeprom control register) EEPM bits (eeprom program mode) to 0b01, which translates to erase mode
+	EECR |= (1<<EEMPE);           // Set EEMPE (eeprom master program enable) in EECR (eeprom control register), this must be done BEFORE starting the erase operation to enable writing to the eeprom 
+	EECR |= (1<<EEPE);            // Set EEPE (eeprom program enable) in EECR (eeprom control register), this starts the erase operation
+	while(EECR & (1<<EEPE));      // Wait for write completion (see line 96 for more details)
 }
 
 // Write mode index to EEPROM (with wear leveling)
@@ -112,9 +108,9 @@ uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {
 	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}	
-	EEPROM_write(eepos, 0xff);         // erase old state
-	eepos = ((eepos+1) & EEPMODE); // wear leveling, use next cell
-	EEPROM_write(eepos, ~mode_idx);         // save current index, flipped
+	EEPROM_erase(eepos);            // Erase the previous position
+	eepos = ((eepos+1) & EEPMODE);  // wear leveling, use next cell, limited by ANDing in EEPMODE, the maximum eeprom address for mode index storage
+	EEPROM_write(eepos, ~mode_idx); // save current index, flipped because empty bits are 0xFF.  This allows for storing index 0.
 	return eepos;
 }
 
@@ -151,21 +147,15 @@ inline uint8_t restore_config() {
 }
 
 inline void ADC_on(uint8_t dpin, uint8_t channel) {
-	// disable digital input on ADC pin to reduce power consumption
-	DIDR0 |= (1 << dpin);
-	// 1.1v reference, left-adjust, ADC1/PB2
-	ADMUX  = (1 << V_REF) | (1 << ADLAR) | channel; 
-	// enable, start, prescale
-	ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL;   
-	// Toss out the garbage first result
-	while (ADCSRA & (1 << ADSC));
+	DIDR0 |= (1 << dpin);                             // Disable digital input on analog channel by setting the DIDR0 (Digital Input Disable Register) bit in the position for that pin
+	ADMUX  = (1 << V_REF) | (1 << ADLAR) | channel;   // Set ADMUX (ADC Mulitplexer Selection Register) bits: ADLAR (ADC Left Adjust Result), V_REF (1.1v reference, different between attiny13 and 25/45/85), channel selects which pin to reference to
+	ADCSRA = (1 << ADEN ) | (1 << ADSC ) | ADC_PRSCL; // Set ADCSRA (ADC control and status register A) bits: ADEN (ADC Enable, turns on the ADC), ADSC (ADC start conversion), and set the prescaler bits to ADC_PRSCL, different between attiny13 and 25/45/85
+	while (ADCSRA & (1 << ADSC));                     // Wait for the result (ADSC stays set until a result is returned), the first one is garbage so we don't read it
 }
 
 uint8_t get_voltage() {
-	// Get the voltage for later
-	ADCSRA |= (1 << ADSC);
-	// Wait for completion
-	while (ADCSRA & (1 << ADSC));
+	ADCSRA |= (1 << ADSC);        // Set ADCSRA (ADC control and status register A) bit ADSC (ADC Start Conversion) to start the ADC conversion process
+	while (ADCSRA & (1 << ADSC)); // Wait for the result (ADSC stays set until a result is returned)
 	return ADCH;
 }
 
@@ -173,6 +163,7 @@ inline void set_output(uint8_t pwm1, uint8_t pwm2) {
 	PWM_LVL = pwm1;
 	ALT_PWM_LVL = pwm2;
 }
+
 #ifdef DEBUG
 // Blink out the contents of a byte
 void debug_byte(uint8_t byte) {
@@ -191,6 +182,7 @@ void debug_byte(uint8_t byte) {
 	_delay_s();
 }
 #endif
+
 void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
 	ALT_PWM_LVL = 0;
 	for (; val; val--) {
@@ -208,6 +200,7 @@ void emergency_shutdown(){
 	set_output(0,0);
 	sleep_mode();
 }
+
 #ifdef TEMP_CAL_MODE
 uint8_t get_temperature() {
 	// Configure the ADC for temperature readings
@@ -337,9 +330,9 @@ int main(void) {
 	}
 
 	// First, get the "mode group" (increment value)
-	uint8_t i=MODE1INC; // This is reused a lot, it's set to 2 for mode group 2 step augmentation
+	uint8_t i = MODE1INC; // This is reused a lot, it's set to 2 for mode group 2 step augmentation
 	if (config & MODE_GROUP) {
-		i=MODE2INC;
+		i = MODE2INC;
 	}
 
 	// Read saved index
