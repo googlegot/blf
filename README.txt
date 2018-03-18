@@ -82,7 +82,7 @@ Config mode will flash for the config option number, wait a second, then
 Config options:
 ---------------
 1. Muggle mode
-- This mode disables medium press, and reduces the maximum output to brightness level 6 (or 3 in mode group 2)
+- This mode disables medium press, mode order reversal, and reduces the maximum output to brightness level 6 (or 3 in mode group 2)
 
 2. Mode Memory
 - When set, the light will remember your the last mode you were in.
@@ -91,7 +91,7 @@ Config options:
 - When set, this disables the lowest output mode (moon mode)
 
 4. Mode Order
-- This selects the order you advance through the mode in (High to Low, or Low to High)
+- This selects the order in which you advance through the modes (bright to dim, or dim to bright)
 
 5. Mode group
 - This alternates between normal mode groups listed above.
