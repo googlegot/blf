@@ -257,7 +257,7 @@ inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	if (mode_idx >= MODE_CNT) {
 		// Loop back if we've hit the end of hidden modes
 		mode_idx = 0;
-	} else if (mode_idx == ((config & MOON_MODE)>>2)) {
+	} else if ((mode_idx == 0) || ((config & MOON_MODE) && (mode_idx == i))) {
 		// If we're at mode_idx 0, go to hidden modes
 		mode_idx = NUM_MODES;
 	} else if (mode_idx < NUM_MODES) {
