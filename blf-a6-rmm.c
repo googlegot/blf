@@ -1,4 +1,4 @@
-/*
+/* 
  * BLF EE A6 firmware (special-edition group buy light)
  * This light uses a FET+1 style driver, with a FET on the main PWM channel
  * for the brightest high modes and a single 7135 chip on the secondary PWM
@@ -84,10 +84,11 @@ void EEPROM_write(uint8_t address, uint8_t data) {
 	EEDR = data;                  // Set EEDR (eeprom data register) to the data to be written
 	EECR |= (1<<EEMPE);	          // Write logical one to EEMPE (eeprom master program enable)
 	EECR |= (1<<EEPE);            // Start eeprom write by setting EEPE (eeprom program enable)
-	while(EECR & (1<<EEPE));      // Wait for completion of write (the EEPE bit in EECR (eeprom control register) will stay set until eeprom read completes)
+	while(EECR & (1<<EEPE));      // Wait for completion of write (the EEPE bit in EECR (eeprom control register) will stay set until eeprom write completes)
 }
 
 inline uint8_t EEPROM_read(uint8_t address) {
+	while(EECR & (1<<EEPE));      // Wait for the completion of any write operations (if any).  See this same loop in EEPROM_write for more details.
 	EEAR = address;               // Set EEAR (eeprom address register) to the eeprom address to perform the operation on 
 	EECR |= (1<<EERE);            // Start eeprom read by ORing 1 into EERE (eeprom read enable) in the EECR (eeprom control register)
 	return EEDR;                  // Return data from EEDR (eeprom data register)
@@ -98,12 +99,12 @@ inline void EEPROM_erase(uint8_t address) {
 	EECR = (0<<EEPM1)|(1<<EEPM0); // Set EECR (eeprom control register) EEPM bits (eeprom program mode) to 0b01, which translates to erase mode
 	EECR |= (1<<EEMPE);           // Set EEMPE (eeprom master program enable) in EECR (eeprom control register), this must be done BEFORE starting the erase operation to enable writing to the eeprom 
 	EECR |= (1<<EEPE);            // Set EEPE (eeprom program enable) in EECR (eeprom control register), this starts the erase operation
-	while(EECR & (1<<EEPE));      // Wait for write completion (see line 96 for more details)
+	while(EECR & (1<<EEPE));      // Wait for write completion (see this same loop in EEPROM_write for more details)
 }
 
 inline uint8_t reverse_idx(uint8_t config, uint8_t mode_idx) {
 	// Reverse the index if the config option is set and the index is in normal modes 
-	if ((config & MODE_DIR) && (mode_idx < NUM_MODES)) {
+	if ((config & MODE_DIR) && (mode_idx < NUM_MODES) && !(config & MUGGLE)) {
 		mode_idx = (NUM_MODES - 1 - mode_idx);
 	}
 	return mode_idx;
@@ -112,16 +113,22 @@ inline uint8_t reverse_idx(uint8_t config, uint8_t mode_idx) {
 // Write mode index to EEPROM (with wear leveling)
 uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {  
 	mode_idx = reverse_idx(config, mode_idx); // Reverse the mode index if needed
-	EEPROM_erase(eepos);              // Erase the previous position
-	eepos = ((eepos+1) & EEPMODE);    // wear leveling, use next cell, limited by ANDing in EEPMODE, the maximum eeprom address for mode index storage
-	EEPROM_write(eepos, ~mode_idx);   // save current index, flipped because empty bits are 0xFF.  This allows for storing index 0.
+	EEPROM_erase(eepos);                      // Erase the previous position
+
+	if (eepos == EEPMODE) {                   // Wear leveling, use next cell, roll over if we hit the end of mode index storage
+		eepos=0;
+	} else {
+		eepos++;
+	}
+
+	EEPROM_write(eepos, ~mode_idx);           // save current index, flipped because empty bits are 0xFF.  This allows for storing index 0.
 	return eepos;
 }
 
 inline uint8_t restore_mode_idx(uint8_t eepos) {
 	uint8_t eep;
 	// Find the config data
-	for(eepos=0; eepos<=EEPMODE; eepos++) {
+	for(eepos=0; eepos<EEPMODE; eepos++) {
 		eep = ~(EEPROM_read(eepos));
 		if (eep) {
 			break;
@@ -249,8 +256,8 @@ uint8_t get_bat() {
 inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	if (mode_idx >= MODE_CNT) {
 		// Loop back if we've hit the end of hidden modes
-		mode_idx = (config & MOON_MODE);
-	} else if (mode_idx == (config & MOON_MODE)) {
+		mode_idx = 0;
+	} else if (mode_idx == ((config & MOON_MODE)>>2)) {
 		// If we're at mode_idx 0, go to hidden modes
 		mode_idx = NUM_MODES;
 	} else if (mode_idx < NUM_MODES) {
@@ -266,11 +273,9 @@ inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
 inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 	mode_idx += i;
 	
-	if (mode_idx >= NUM_MODES) {
-		mode_idx = (config & MOON_MODE);
+	if ((mode_idx >= NUM_MODES) || ((config & MUGGLE) && (mode_idx > NUM_MODES -3))) {
+		mode_idx = 0;
 	}
-	
-	mode_idx = reverse_idx(config, mode_idx); // Reverse the index if needed
 	
 	return mode_idx;
 }
@@ -314,8 +319,10 @@ int main(void) {
 	
 	// Keep track of the eeprom position
 	uint8_t eepos = 0;
+
 	// Read config values
 	uint8_t config = ~EEPROM_read(EEPLEN);
+
 	// Wipe the config if CONFIG_SET is set
 	// or config is empty (fresh flash)
 	if (!(config & CONFIG_SET)) {
@@ -338,7 +345,7 @@ int main(void) {
 		fast_presses = 0;
 		// Reset to the first mode if memory isn't set on
 		if (!(config & MEMORY)) {
-			mode_idx = (config & MOON_MODE);
+			mode_idx = 0;
 		}
 		locked_in = 0;
 	} else if (locked_in && (config & LOCK_MODE)) {
@@ -352,14 +359,13 @@ int main(void) {
 		// Indicates they did a short press, go to the next mode
 		mode_idx = next(mode_idx, config, i);
 	}
-
-	if (config & MUGGLE) {
-		// Is the user a muggle? No turbo or medium press for you.
-		if (mode_idx > (NUM_MODES - 3)) {
-			mode_idx = (NUM_MODES - 3);
-		} 
+	
+	if ((config & MOON_MODE) && !mode_idx) { // If moon mode is on and the index is 0, increment the mode once to disable moon mode
+		mode_idx += i;
 	}
 
+	mode_idx = reverse_idx(config, mode_idx); // Reverse the index if needed
+	
 	// Save resultant index
 	eepos = save_mode_idx(mode_idx, config, eepos);
 
@@ -396,7 +402,7 @@ int main(void) {
 		if (fast_presses > 0x0f) {  
 			_delay_s();	      // wait for user to stop fast-pressing button
 			fast_presses = 0; // exit this mode after one use
-			mode_idx = (config & MOON_MODE);     // Always exit at lowest mode index
+			mode_idx = 0;     // Always exit at lowest mode index
 			
 			// Loop through each config option, toggle, blink the mode number,
 			// buzz a second for user to confirm, toggle back.
