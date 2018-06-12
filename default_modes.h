@@ -4,7 +4,7 @@
 // Normal modes (mode group 2 is defunct, it now increments mode_idx by 2)
 #define NUM_MODES   8
 #define MODESNx1    0,0,0,7,56,90,137,255      //(FET or Nx7135)
-#define MODES1x1    3,20,110,255,255,255,255,0 //(1x7135)
+#define MODES1x1    8,20,110,255,255,255,255,0 //(1x7135)
 
 #define MODE1INC 1
 #define MODE2INC 2
@@ -31,9 +31,9 @@
 // WDT Frequency compared to CPU clock.  WDT clock decreases exponentially 
 // with temperature, MCU frequency increases linearly.
 //
-#if (ATTINY == 85 || ATTINY == 25)
-#define TEMP_CAL_MODE 1   // Convenience code for temperature calibration mode 
-#endif
+//#if (ATTINY == 85 || ATTINY == 25)
+//#define TEMP_CAL_MODE 1   // Convenience code for temperature calibration mode 
+//#endif
 
 // How many timer ticks before before dropping down.
 // Each timer tick is 1s, so "30" would be a 30-second stepdown.
@@ -57,7 +57,7 @@ const uint8_t modes1x[] = { MODES1x1, HIDDENMODES_ALT };
 #define MODE_GROUP   16  // Mode group
 #define MED_PRESS    32  // Disable medium press
 #define LOCK_MODE    64  // "Lock in" to mode after 3 seconds
-#define CONFIG_SET   128 // if 0, set CONFIG_DEFAULT MUST always be the last user-configurable mode
+#define CONFIG_SET   128 // if 0, set CONFIG_DEFAULT (reset config), MUST always be the last user-configurable mode
 
 // Set the bit value of the config mode you'd like when starting fresh,
 // or when the config is wiped

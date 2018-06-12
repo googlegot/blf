@@ -74,7 +74,7 @@ const uint8_t voltage_blinks[] = {
 	ADC_50,   // 3 blinks for 50%-75%
 	ADC_75,   // 4 blinks for 75%-100%
 	ADC_100,  // 5 blinks for >100%
-	255
+	255       // Don't remove this, it's a limiter
 };
 
 // EEPROM_read/write taken from the datasheet
@@ -123,18 +123,6 @@ uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {
 
 	EEPROM_write(eepos, ~mode_idx);           // save current index, flipped because empty bits are 0xFF.  This allows for storing index 0.
 	return eepos;
-}
-
-inline uint8_t restore_mode_idx(uint8_t eepos) {
-	uint8_t eep;
-	// Find the config data
-	for(eepos=0; eepos<EEPMODE; eepos++) {
-		eep = ~(EEPROM_read(eepos));
-		if (eep) {
-			break;
-		}
-	}
-	return eep;
 }
 
 #ifdef TEMP_CAL_MODE
@@ -234,7 +222,7 @@ inline void configure_output() {
 	DDRB |= (1 << PWM_PIN);	    // enable main channel
 	DDRB |= (1 << ALT_PWM_PIN); // enable second channel
 	TCCR0A = PHASE;             // Set timer to do PWM 
-	TCCR0B = 1;              // pre-scaler for timer
+	TCCR0B = 1;                 // pre-scaler for timer
 
 	// Charge up the capacitor by setting CAP_PIN to output
 	DDRB  |= (1 << CAP_PIN);	// Output
@@ -318,7 +306,7 @@ int main(void) {
 #endif
 	
 	// Keep track of the eeprom position
-	uint8_t eepos = 0;
+	uint8_t eepos;
 
 	// Read config values
 	uint8_t config = ~EEPROM_read(EEPLEN);
@@ -338,7 +326,15 @@ int main(void) {
 
 	// Read saved index
 	// mode_idx is the position in the mode arrays to set the output to
-	uint8_t mode_idx = restore_mode_idx(eepos);
+	// Find the config data
+	uint8_t mode_idx;
+	for(eepos=0; eepos<=EEPMODE; eepos++) {
+		mode_idx = ~(EEPROM_read(eepos));
+		if (mode_idx) {
+			break;
+		}
+	}
+
 	// Manipulate index depending on config options
 	if (cap_val < CAP_MED || (cap_val < CAP_SHORT && !(config & MED_PRESS))) {
 		// Long press, clear fast_presses
@@ -423,7 +419,7 @@ int main(void) {
 			// 4 blinks for Medium Press.
 			
 			uint8_t blinks=1;
-			for (i=1; i<=CONFIG_SET; i<<=1, blinks++) {
+			for (i=1; i; i<<=1, blinks++) {
 				blink(blinks, 12, 30);
 				_delay_10_ms(5);
 				save_config(config ^= i);
@@ -434,7 +430,7 @@ int main(void) {
 
 #ifdef TEMP_CAL_MODE
 			// Enter Temperature Calibration Mode
-			blink(8, 12, 30);
+			blink(9, 12, 30);
 			maxtemp = 255;
 			save_maxtemp(maxtemp);
 			_delay_10_ms(200);
