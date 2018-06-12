@@ -82,7 +82,7 @@ void EEPROM_write(uint8_t address, uint8_t data) {
 	EECR = (0<<EEPM1)|(0<<EEPM0); // Atomic write mode, EEPM0:1 value 0b00
 	EEAR = address;               // Set EEAR (eeprom address register) to the eeprom address to perform the operation on
 	EEDR = data;                  // Set EEDR (eeprom data register) to the data to be written
-	EECR |= (1<<EEMPE);	          // Write logical one to EEMPE (eeprom master program enable)
+	EECR |= (1<<EEMPE);           // Write logical one to EEMPE (eeprom master program enable)
 	EECR |= (1<<EEPE);            // Start eeprom write by setting EEPE (eeprom program enable)
 	while(EECR & (1<<EEPE));      // Wait for completion of write (the EEPE bit in EECR (eeprom control register) will stay set until eeprom write completes)
 }
@@ -294,7 +294,7 @@ int main(void) {
 #endif
 	
 	// Keep track of the eeprom position
-	uint8_t eepos;
+	uint8_t eepos = 0;
 
 	// Read config values
 	uint8_t config = ~EEPROM_read(EEPLEN);
@@ -315,7 +315,7 @@ int main(void) {
 	// Read saved index
 	// mode_idx is the position in the mode arrays to set the output to
 	// Find the config data
-	uint8_t mode_idx;
+	uint8_t mode_idx = 0;
 	for(eepos=0; eepos<EEPMODE; eepos++) {
 		mode_idx = ~(EEPROM_read(eepos));
 		if (mode_idx) {
