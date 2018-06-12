@@ -127,17 +127,16 @@ uint8_t save_mode_idx(uint8_t mode_idx, uint8_t config, uint8_t eepos) {
 
 #ifdef TEMP_CAL_MODE
 void save_maxtemp(uint8_t maxtemp){
-	// Save both the max temperature and config
-	EEPROM_write((EEPLEN - 1), maxtemp);
+	EEPROM_write((EEPLEN - 1), maxtemp); // Max temp is stationary
 }
 
 inline uint8_t restore_maxtemp(){
-	return EEPROM_read((EEPLEN - 1));
+	return EEPROM_read((EEPLEN - 1)); // Max temp is stationary
 }
 #endif
 
 void save_config(uint8_t config) {
-	EEPROM_write(EEPLEN, ~config);
+	EEPROM_write(EEPLEN, ~config); // Config is stationary
 }
 
 inline void ADC_on(uint8_t dpin, uint8_t channel) {
@@ -154,8 +153,8 @@ uint8_t get_voltage() {
 }
 
 inline void set_output(uint8_t pwm1, uint8_t pwm2) {
-	PWM_LVL = pwm1;
-	ALT_PWM_LVL = pwm2;
+	PWM_LVL = pwm1;     // Set FET output
+	ALT_PWM_LVL = pwm2; // Set voltage regulator output
 }
 
 #ifdef DEBUG
@@ -178,42 +177,41 @@ void debug_byte(uint8_t byte) {
 #endif
 
 void blink(uint8_t val, uint8_t speed, uint8_t brightness) {
-	ALT_PWM_LVL = 0;
+	ALT_PWM_LVL = 0; // Don't use the voltage regulator
 	for (; val; val--) {
-		PWM_LVL = brightness;
-		_delay_10_ms(speed);
-		PWM_LVL = 0;
-		_delay_10_ms(speed); _delay_10_ms(speed);
+		PWM_LVL = brightness; // Set the FET to specified brightness
+		_delay_10_ms(speed);  // Sleep for a bit
+		PWM_LVL = 0;          // Turn off the FET
+		_delay_10_ms(speed); _delay_10_ms(speed); // Sleep for twice as long
 	}
 }
 
 void emergency_shutdown(){
 	// Shut down, voltage is too low.
-	// Power down as many components as possible
-	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-	set_output(0,0);
-	sleep_mode();
+	set_sleep_mode(SLEEP_MODE_PWR_DOWN); // Power down as many components as possible
+	set_output(0,0);                     // Turn off output
+	sleep_mode();                        // Go to sleep
 }
 
 #ifdef TEMP_CAL_MODE
 uint8_t get_temperature() {
-	// Configure the ADC for temperature readings
-	ADC_on(ADC_DIDR, TEMP_CHANNEL);
-	// average a few values; temperature is noisy
+	ADC_on(ADC_DIDR, TEMP_CHANNEL); // Configure the ADC for temperature readings
 	uint16_t temp = 0;
 	uint8_t i;
-	for(i=0; i<16; i++) {
+
+	for(i=0; i<16; i++) {           // Average a few values; temperature is noisy
 		temp += get_voltage();
 	}
 	temp >>= 4;
+
 	return temp;
 }
 #endif
 
 inline void set_lock(uint8_t config) {
 	if (config & LOCK_MODE) {
-		_delay_10_ms(255);
-		locked_in = 1;
+		_delay_10_ms(255); // Delay for 2.55 seconds
+		locked_in = 1;     // Lock the output
 	}
 }
 
@@ -225,44 +223,39 @@ inline void configure_output() {
 	TCCR0B = 1;                 // pre-scaler for timer
 
 	// Charge up the capacitor by setting CAP_PIN to output
-	DDRB  |= (1 << CAP_PIN);	// Output
-	PORTB |= (1 << CAP_PIN);	// High
+	DDRB  |= (1 << CAP_PIN);    // Output
+	PORTB |= (1 << CAP_PIN);    // High
 }
 
 inline uint8_t get_cap() {
-	// Start up ADC for capacitor pin
-	ADC_on(CAP_DIDR, CAP_CHANNEL);	
+	ADC_on(CAP_DIDR, CAP_CHANNEL); // Start up ADC for capacitor pin
 	return get_voltage();
 }
 
 uint8_t get_bat() {
-	// Start up ADC for Battery pin
-	ADC_on(ADC_DIDR, ADC_CHANNEL);
+	ADC_on(ADC_DIDR, ADC_CHANNEL); // Start up ADC for Battery pin
 	return get_voltage();
 }
 
 inline uint8_t med_press(uint8_t mode_idx, uint8_t config, uint8_t i) {
-	if (mode_idx >= MODE_CNT) {
-		// Loop back if we've hit the end of hidden modes
+	if (mode_idx >= MODE_CNT) { // Loop back if we've hit the end of hidden modes
 		mode_idx = 0;
-	} else if ((mode_idx == 0) || ((config & MOON_MODE) && (mode_idx == i))) {
-		// If we're at mode_idx 0, go to hidden modes
+	} else if ((mode_idx == 0) || ((config & MOON_MODE) && (mode_idx == i))) { // If we're at mode_idx 0, go to hidden modes
 		mode_idx = NUM_MODES;
-	} else if (mode_idx < NUM_MODES) {
-		// Walk backwards if we're in normal modes
+	} else if (mode_idx < NUM_MODES) { // Walk backwards if we're in normal modes
 		mode_idx -= i;
-	} else if (mode_idx >= NUM_MODES) {
-		// Walk forward if we're in hidden modes
+	} else if (mode_idx >= NUM_MODES) { // Walk forward if we're in hidden modes
 		mode_idx += 1;
 	}
 	return mode_idx;
 }
 
 inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
-	mode_idx += i;
+	mode_idx += i;        // Start out by just incrementing the mode
 	
-	if ((mode_idx >= NUM_MODES) || ((config & MUGGLE) && (mode_idx > NUM_MODES -3))) {
-		mode_idx = 0;
+	if ((mode_idx >= NUM_MODES) || ((config & MUGGLE) && (mode_idx > (NUM_MODES - 3)))) {
+		mode_idx = 0; // If we're at or above the brightest mode, or we're in muggle mode
+		              // and we're above the third-highest mode, drop to the lowest brightness
 	}
 	
 	return mode_idx;
@@ -271,9 +264,9 @@ inline uint8_t next(uint8_t mode_idx, uint8_t config, uint8_t i) {
 inline uint8_t low_batt_stepdown(uint8_t mode_idx) {
 	if (mode_idx == 0) emergency_shutdown(); // If we're already at 0, save state at low and turn off
 	
-	if (mode_idx > TURBO_STEP_DOWN) {  // Drop out of hidden modes to TURBO_STEP_DOWN
+	if (mode_idx > TURBO_STEP_DOWN) {        // Drop out of hidden modes to TURBO_STEP_DOWN
 		mode_idx = TURBO_STEP_DOWN;
-	} else {                           // If we're below TURBO_STEP_DOWN, then reduce the mode index again.
+	} else {                                 // If we're below TURBO_STEP_DOWN, then reduce the mode index again.
 		mode_idx--;
 	}
 
@@ -281,22 +274,17 @@ inline uint8_t low_batt_stepdown(uint8_t mode_idx) {
 }
 
 int main(void) {
-	// Read the off-time cap *first* to get the most accurate reading
-	uint8_t cap_val = get_cap(); // save this for later
+	uint8_t cap_val = get_cap(); // Read the off-time cap *first* to get the most accurate reading
 
-	// Set up output pins and charge up capacitor
-	configure_output();
+	configure_output();          // Set up output pins and charge up capacitor
 	
-	// Get the battery voltage
-	uint8_t voltage = get_bat();
+	uint8_t voltage = get_bat(); // Get the battery voltage
 	
-	// If the battery is getting low, flash thrice when turning on or changing brightness
-	if (voltage < ADC_0) {
+	if (voltage < ADC_0) {       // If the battery is getting low, flash thrice when turning on or changing brightness
 		blink(3, 5, 30);
 	}
 
-	// Protect the battery if we're just starting and the voltage is too low.
-	if (voltage < ADC_LOW){
+	if (voltage < ADC_LOW){      // Protect the battery if we're just starting and the voltage is too low.
 		emergency_shutdown();
 	}
 
@@ -328,7 +316,7 @@ int main(void) {
 	// mode_idx is the position in the mode arrays to set the output to
 	// Find the config data
 	uint8_t mode_idx;
-	for(eepos=0; eepos<=EEPMODE; eepos++) {
+	for(eepos=0; eepos<EEPMODE; eepos++) {
 		mode_idx = ~(EEPROM_read(eepos));
 		if (mode_idx) {
 			break;
